@@ -128,7 +128,6 @@ def parse_arguments():
                         help='Check if the VirusTotal API key exists and display it.')
     return parser.parse_args()
 
-
 banner = """
 
 ▄█ ████▄ ▄█▄       ▄▄▄▄▄       ▄█▄     ▄  █ ▄███▄   ▄█▄    █  █▀ ▄█    ▄     ▄▀  
@@ -137,11 +136,10 @@ banner = """
 ▐█ ▀████ █▄  ▄▀  ▀▄▄▄▄▀        █▄  ▄▀ █   █ █▄   ▄▀ █▄  ▄▀ █  █  ▐█ █ █  █ █   █ 
  ▐       ▀███▀                 ▀███▀     █  ▀███▀   ▀███▀    █    ▐ █  █ █  ███  
                                         ▀                   ▀       █   ██       
-
-V 3.2
-By Kh0ilg
+                    
+v3.2
+By Khoilg
 """
-
 
 def main():
     print(Fore.RESET + banner)
@@ -209,9 +207,6 @@ def main():
                             print_result(result)
         else:
             print(f"The file {args.f} does not exist.")
-
-    if not any([args.i, args.m, args.d, args.file]):
-        print("Please provide at least one option (-i, -m, -d, -f) for checking IoCs.")
 
     if args.output:
         output_dir = os.path.dirname(args.output)
@@ -288,7 +283,7 @@ def save_results(results, output_file, file_type):
                     existing_iocs.add(ioc)
             conn.commit()
             conn.close()
-            print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
+            print(f"=> Kết quả đã được lưu vào tệp .db tại {os.path.abspath(output_file)}")
 
 
 def print_result(result):
