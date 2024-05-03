@@ -283,7 +283,7 @@ def save_results(results, output_file, file_type):
                     existing_iocs.add(ioc)
             conn.commit()
             conn.close()
-            print(f"=> Kết quả đã được lưu vào tệp .db tại {os.path.abspath(output_file)}")
+            print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
 
 
 def print_result(result):
