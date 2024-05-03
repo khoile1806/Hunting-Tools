@@ -4,9 +4,11 @@ import json
 import sqlite3
 import requests
 import argparse
+from colorama import Fore
 from datetime import datetime
 
 API_KEY_FILE = 'api_key.txt'
+
 
 def check_ip_virustotal(ip, api_key):
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
@@ -15,7 +17,8 @@ def check_ip_virustotal(ip, api_key):
     if response.ok:
         data = response.json()
         last_scanned = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        engines_detected = [engine for engine, detection in data['data']['attributes']['last_analysis_results'].items() if detection['category'] == 'malicious']
+        engines_detected = [engine for engine, detection in data['data']['attributes']['last_analysis_results'].items()
+                            if detection['category'] == 'malicious']
         harmless_votes = data['data']['attributes']['last_analysis_stats']['harmless']
         suspicous_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
         undetected_votes = data['data']['attributes']['last_analysis_stats']['undetected']
@@ -32,6 +35,7 @@ def check_ip_virustotal(ip, api_key):
     else:
         print(f"Unable to check the IP: {ip}")
 
+
 def check_md5_virustotal(md5, api_key):
     url = "https://www.virustotal.com/vtapi/v2/file/report"
     params = {'apikey': api_key, 'resource': md5}
@@ -40,8 +44,11 @@ def check_md5_virustotal(md5, api_key):
         result = response.json()
         if result.get('response_code') == 1:
             scan_date_str = result.get('scan_date')
-            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S') if isinstance(scan_date_str, str) else datetime.fromtimestamp(scan_date_str)
-            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if engine_data.get('detected')]
+            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S') if isinstance(scan_date_str,
+                                                                                            str) else datetime.fromtimestamp(
+                scan_date_str)
+            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                                engine_data.get('detected')]
             result = {
                 'MD5': md5,
                 'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
@@ -54,6 +61,7 @@ def check_md5_virustotal(md5, api_key):
             print(f"File with MD5 {md5} is not found in VirusTotal database.")
     else:
         print(f"Unable to check the MD5: {md5}")
+
 
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
@@ -68,7 +76,9 @@ def check_domain_virustotal(domain, api_key):
         suspicous_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
         undetected_votes = data['data']['attributes']['last_analysis_stats']['undetected']
         score = f"{malicious_votes}/{malicious_votes + harmless_votes + suspicous_votes + undetected_votes}"
-        detected_by = [engine_name for engine_name, scan_result in data['data']['attributes']['last_analysis_results'].items() if scan_result['category'] == 'malicious']
+        detected_by = [engine_name for engine_name, scan_result in
+                       data['data']['attributes']['last_analysis_results'].items() if
+                       scan_result['category'] == 'malicious']
         detected_by_string = ', '.join(detected_by) if detected_by else 'No detections'
         result = {
             'Domain': domain,
@@ -81,10 +91,12 @@ def check_domain_virustotal(domain, api_key):
     else:
         print(f"Unable to check the domain: {domain}")
 
+
 def save_api_key(api_key):
     with open(API_KEY_FILE, 'w') as file:
         file.write(api_key)
     print("API key saved successfully.")
+
 
 def clear_api_key():
     if os.path.exists(API_KEY_FILE):
@@ -93,26 +105,48 @@ def clear_api_key():
     else:
         print("No API key to clear.")
 
+
 def get_saved_api_key():
     if os.path.exists(API_KEY_FILE):
         with open(API_KEY_FILE, 'r') as file:
             return file.read().strip()
     return None
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='VirusTotal IoC Checker Created by Khoilg')
     parser.add_argument('-i', nargs='+', metavar='IP', help='Check one or more IP addresses')
     parser.add_argument('-m', nargs='+', metavar='MD5', help='Check one or more MD5 hashes')
     parser.add_argument('-d', nargs='+', metavar='DOMAIN', help='Check one or more domains')
-    parser.add_argument('-f', '--file',metavar='FILE', help='Check IoCs from a file containing one IoC per line')
+    parser.add_argument('-f', '--file', metavar='FILE', help='Check IoCs from a file containing one IoC per line')
     parser.add_argument('-o', '--output', metavar='OUTPUT_FILE', help='Save results to a file')
-    parser.add_argument('-t', '--type', choices=['csv','db','txt'], default='txt', help='Choose the type of output file (CSV, Sqlite3 or TXT), default is TXT')
+    parser.add_argument('-t', '--type', choices=['csv', 'db', 'txt'], default='txt',
+                        help='Choose the type of output file (CSV, Sqlite3 or TXT), default is TXT')
     parser.add_argument('-a', '--api-key', metavar='APIKEY', help='Add or update the VirusTotal API key')
     parser.add_argument('-c', '--clear-api', action='store_true', help='Clear the saved VirusTotal API key')
-    parser.add_argument('-s', '--check-api', action='store_true', help='Check if the VirusTotal API key exists and display it.')
+    parser.add_argument('-s', '--check-api', action='store_true',
+                        help='Check if the VirusTotal API key exists and display it.')
     return parser.parse_args()
 
+
+banner = """
+
+▄█ ████▄ ▄█▄       ▄▄▄▄▄       ▄█▄     ▄  █ ▄███▄   ▄█▄    █  █▀ ▄█    ▄     ▄▀  
+██ █   █ █▀ ▀▄    █     ▀▄     █▀ ▀▄  █   █ █▀   ▀  █▀ ▀▄  █▄█   ██     █  ▄▀    
+██ █   █ █   ▀  ▄  ▀▀▀▀▄       █   ▀  ██▀▀█ ██▄▄    █   ▀  █▀▄   ██ ██   █ █ ▀▄  
+▐█ ▀████ █▄  ▄▀  ▀▄▄▄▄▀        █▄  ▄▀ █   █ █▄   ▄▀ █▄  ▄▀ █  █  ▐█ █ █  █ █   █ 
+ ▐       ▀███▀                 ▀███▀     █  ▀███▀   ▀███▀    █    ▐ █  █ █  ███  
+                                        ▀                   ▀       █   ██       
+
+V 3.2
+By Kh0ilg
+"""
+
+
 def main():
+    print(Fore.RESET + banner)
+    print(Fore.WHITE)
+
     args = parse_arguments()
     results = []
 
@@ -131,7 +165,7 @@ def main():
     if args.clear_api:
         clear_api_key()
         return
-    
+
     api_key = get_saved_api_key()
     if not api_key:
         print("No API key found. Please add an API key with the -a option.")
@@ -139,21 +173,21 @@ def main():
 
     if args.i:
         for ip in args.i:
-            result = check_ip_virustotal(ip,api_key)
+            result = check_ip_virustotal(ip, api_key)
             if result:
                 results.append(result)
                 print_result(result)
 
     if args.m:
         for md5 in args.m:
-            result = check_md5_virustotal(md5,api_key)
+            result = check_md5_virustotal(md5, api_key)
             if result:
                 results.append(result)
                 print_result(result)
 
     if args.d:
         for domain in args.d:
-            result = check_domain_virustotal(domain,api_key)
+            result = check_domain_virustotal(domain, api_key)
             if result:
                 results.append(result)
                 print_result(result)
@@ -165,11 +199,11 @@ def main():
                     line = line.strip()
                     if line:
                         if all(char.isdigit() or char == '.' for char in line):
-                            result = check_ip_virustotal(line,api_key)
+                            result = check_ip_virustotal(line, api_key)
                         elif '.' in line and not any(char.isdigit() for char in line.split('.')[0]):
-                            result = check_domain_virustotal(line,api_key)
+                            result = check_domain_virustotal(line, api_key)
                         else:
-                            result = check_md5_virustotal(line,api_key)
+                            result = check_md5_virustotal(line, api_key)
                         if result:
                             results.append(result)
                             print_result(result)
@@ -189,6 +223,7 @@ def main():
             output_file = os.path.join(args.output, output_filename)
         save_results(results, output_file, args.type)
 
+
 def save_results(results, output_file, file_type):
     existing_iocs = set()
 
@@ -205,7 +240,7 @@ def save_results(results, output_file, file_type):
             next(csv_reader, None)
             for row in csv_reader:
                 if row:
-                    existing_iocs.add(row[0]) 
+                    existing_iocs.add(row[0])
 
     with open(output_file, 'a', newline='', encoding='utf-8') as file:
         if file_type == 'csv':
@@ -218,8 +253,11 @@ def save_results(results, output_file, file_type):
                 if result.get('Detected_by'):
                     ioc = result.get('IP', '') or result.get('MD5', '') or result.get('Domain', '')
                     if ioc not in existing_iocs:
-                        detected_by = ', '.join(result['Detected_by']) if isinstance(result.get('Detected_by'), list) else result.get('Detected_by')
-                        csv_writer.writerow([ioc, detected_by, result.get('Link', 'none'), result.get('Last_scanned', 'none')])
+                        detected_by = ', '.join(result['Detected_by']) if isinstance(result.get('Detected_by'),
+                                                                                     list) else result.get(
+                            'Detected_by')
+                        csv_writer.writerow(
+                            [ioc, detected_by, result.get('Link', 'none'), result.get('Last_scanned', 'none')])
                         existing_iocs.add(ioc)
             print(f"=> CSV File results are saved in {os.path.abspath(output_file)}")
 
@@ -228,9 +266,9 @@ def save_results(results, output_file, file_type):
                 ioc = result.get('IP', '') or result.get('MD5', '') or result.get('Domain', '')
                 if ioc and ioc not in existing_iocs:
                     json_result = json.dumps(result, indent=4)
-                    json_result = json_result.replace('"', '') 
-                    json_result = json_result.replace('{', '') 
-                    json_result = json_result.replace('}', '') 
+                    json_result = json_result.replace('"', '')
+                    json_result = json_result.replace('{', '')
+                    json_result = json_result.replace('}', '')
                     json_result = json_result.replace(',', '')
                     file.write(json_result + '\n')
                     existing_iocs.add(ioc)
@@ -245,11 +283,13 @@ def save_results(results, output_file, file_type):
                 score = result.get('Score', '0/90')
                 score_value = int(score.split('/')[0]) if '/' in score else 0
                 if ioc and ioc not in existing_iocs and score_value >= 1:
-                    cursor.execute("INSERT INTO iocs (ioc, score, last_scanned) VALUES (?, ?, ?)", (ioc, score, result.get('Last_scanned', 'none')))
+                    cursor.execute("INSERT INTO iocs (ioc, score, last_scanned) VALUES (?, ?, ?)",
+                                   (ioc, score, result.get('Last_scanned', 'none')))
                     existing_iocs.add(ioc)
             conn.commit()
             conn.close()
-            print(f"=> Kết quả đã được lưu vào tệp .db tại {os.path.abspath(output_file)}")
+            print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
+
 
 def print_result(result):
     if 'IP' in result:
@@ -262,6 +302,7 @@ def print_result(result):
     print(f"Score: {result['Score']}")
     print(f"Detected by: {result['Detected_by']}")
     print(f"Link: {result['Link']}\n")
+
 
 if __name__ == "__main__":
     main()
