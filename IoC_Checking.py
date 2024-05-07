@@ -12,8 +12,8 @@ API_KEY_FILE = 'api_key.txt'
 
 def check_ip_virustotal(ip, api_key):
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
-    headers = {'x-apikey': api_key}
-    response = requests.get(url, headers=headers)
+    params = {'x-apikey': api_key}
+    response = requests.get(url, headers=params)
     
     if response.status_code != 200:
         if response.status_code == 401:
@@ -81,8 +81,8 @@ def check_md5_virustotal(md5, api_key):
 
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
-    headers = {'x-apikey': api_key}
-    response = requests.get(url, headers=headers)
+    params = {'x-apikey': api_key}
+    response = requests.get(url, headers=params)
     
     if response.status_code != 200:
         if response.status_code == 401:
