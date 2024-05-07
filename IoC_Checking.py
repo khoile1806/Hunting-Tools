@@ -1,6 +1,7 @@
 import os
 import csv
 import json
+import socket
 import sqlite3
 import requests
 import argparse
@@ -9,11 +10,19 @@ from datetime import datetime
 
 API_KEY_FILE = 'api_key.txt'
 
-
 def check_ip_virustotal(ip, api_key):
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
     headers = {'x-apikey': api_key}
     response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        if response.status_code == 401:
+            raise Exception("Invalid API key")
+        elif response.status_code == 429:
+            raise Exception("API quota exceeded")
+        else:
+            raise Exception(f"Unexpected status code: {response.status_code}")
+    
     if response.ok:
         data = response.json()
         last_scanned = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -33,40 +42,56 @@ def check_ip_virustotal(ip, api_key):
         }
         return result
     else:
-        print(f"Unable to check the IP: {ip}")
-
-
+        raise Exception(f"Unable to check the IP: {ip}")
+    
 def check_md5_virustotal(md5, api_key):
     url = "https://www.virustotal.com/vtapi/v2/file/report"
     params = {'apikey': api_key, 'resource': md5}
     response = requests.get(url, params=params)
-    if response.ok:
-        result = response.json()
-        if result.get('response_code') == 1:
-            scan_date_str = result.get('scan_date')
-            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S') if isinstance(scan_date_str,
-                                                                                            str) else datetime.fromtimestamp(
-                scan_date_str)
-            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
-                                engine_data.get('detected')]
-            result = {
-                'MD5': md5,
-                'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
-                'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
-                'Detected_by': ', '.join(engines_detected),
-                'Link': result.get('permalink')
-            }
-            return result
+    
+    if response.status_code != 200:
+        if response.status_code == 401:
+            raise Exception("Invalid API key")
+        elif response.status_code == 429:
+            raise Exception("API quota exceeded")
         else:
-            print(f"File with MD5 {md5} is not found in VirusTotal database.")
+            raise Exception(f"Unexpected status code: {response.status_code}")
+    
+    result = response.json()
+    if result.get('response_code') == 1:
+        scan_date_str = result.get('scan_date')
+        if isinstance(scan_date_str, str):
+            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+        else:
+            scan_date = datetime.fromtimestamp(scan_date_str)
+        
+        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if engine_data.get('detected')]
+        
+        result = {
+            'MD5': md5,
+            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+            'Detected_by': ', '.join(engines_detected),
+            'Link': result.get('permalink')
+        }
+        return result
     else:
-        print(f"Unable to check the MD5: {md5}")
-
+        print(response)
+        raise Exception(f"Unable to check the MD5: {md5}")
 
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
     headers = {'x-apikey': api_key}
     response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        if response.status_code == 401:
+            raise Exception("Invalid API key")
+        elif response.status_code == 429:
+            raise Exception("API quota exceeded")
+        else:
+            raise Exception(f"Unexpected status code: {response.status_code}")
+    
     if response.ok:
         data = response.json()
         last_modified = data['data']['attributes']['last_modification_date']
@@ -89,14 +114,12 @@ def check_domain_virustotal(domain, api_key):
         }
         return result
     else:
-        print(f"Unable to check the domain: {domain}")
-
+        raise Exception(f"Unable to check the domain: {domain}")
 
 def save_api_key(api_key):
     with open(API_KEY_FILE, 'w') as file:
         file.write(api_key)
     print("API key saved successfully.")
-
 
 def clear_api_key():
     """Clear the saved API key."""
@@ -106,7 +129,6 @@ def clear_api_key():
     except FileNotFoundError:
         print("No API key to clear.")
 
-
 def get_saved_api_key():
     """Retrieve the saved API key."""
     try:
@@ -114,7 +136,13 @@ def get_saved_api_key():
             return file.read().strip()
     except FileNotFoundError:
         return None
-
+    
+def is_valid_ip(address):
+    try: 
+        socket.inet_aton(address)
+        return True
+    except:
+        return False
 
 def parse_arguments():
     """Parse command-line arguments."""
@@ -129,25 +157,27 @@ def parse_arguments():
     parser.add_argument('-a', '--api-key', metavar='APIKEY', help='Add or update the VirusTotal API key')
     parser.add_argument('-c', '--clear-api', action='store_true', help='Clear the saved VirusTotal API key')
     parser.add_argument('-s', '--check-api', action='store_true',
-                        help='Check if the VirusTotal API key exists and display it.')
+                        help='Check if the VirusTotal API key exists and display it')
     return parser.parse_args()
-
 
 banner_part1 = """
 
-██╗ ██████╗  ██████╗███████╗     ██████╗██╗  ██╗███████╗ ██████╗██╗  ██╗██╗███╗   ██╗ ██████╗ 
-██║██╔═══██╗██╔════╝██╔════╝    ██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝██║████╗  ██║██╔════╝ 
-██║██║   ██║██║     ███████╗    ██║     ███████║█████╗  ██║     █████╔╝ ██║██╔██╗ ██║██║  ███╗
-██║██║   ██║██║     ╚════██║    ██║     ██╔══██║██╔══╝  ██║     ██╔═██╗ ██║██║╚██╗██║██║   ██║
-██║╚██████╔╝╚██████╗███████║    ╚██████╗██║  ██║███████╗╚██████╗██║  ██╗██║██║ ╚████║╚██████╔╝
-╚═╝ ╚═════╝  ╚═════╝╚══════╝     ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝                             
+ ██▓ ▒█████   ▄████▄    ██████     ▄████▄   ██░ ██ ▓█████  ▄████▄   ██ ▄█▀ ██▓ ███▄    █   ▄████    
+▓██▒▒██▒  ██▒▒██▀ ▀█  ▒██    ▒    ▒██▀ ▀█  ▓██░ ██▒▓█   ▀ ▒██▀ ▀█   ██▄█▒ ▓██▒ ██ ▀█   █  ██▒ ▀█▒   
+▒██▒▒██░  ██▒▒▓█    ▄ ░ ▓██▄      ▒▓█    ▄ ▒██▀▀██░▒███   ▒▓█    ▄ ▓███▄░ ▒██▒▓██  ▀█ ██▒▒██░▄▄▄░   
+░██░▒██   ██░▒▓▓▄ ▄██▒  ▒   ██▒   ▒▓▓▄ ▄██▒░▓█ ░██ ▒▓█  ▄ ▒▓▓▄ ▄██▒▓██ █▄ ░██░▓██▒  ▐▌██▒░▓█  ██▓   
+░██░░ ████▓▒░▒ ▓███▀ ░▒██████▒▒   ▒ ▓███▀ ░░▓█▒░██▓░▒████▒▒ ▓███▀ ░▒██▒ █▄░██░▒██░   ▓██░░▒▓███▀▒   
+░▓  ░ ▒░▒░▒░ ░ ░▒ ▒  ░▒ ▒▓▒ ▒ ░   ░ ░▒ ▒  ░ ▒ ░░▒░▒░░ ▒░ ░░ ░▒ ▒  ░▒ ▒▒ ▓▒░▓  ░ ▒░   ▒ ▒  ░▒   ▒    
+ ▒ ░  ░ ▒ ▒░   ░  ▒   ░ ░▒  ░ ░     ░  ▒    ▒ ░▒░ ░ ░ ░  ░  ░  ▒   ░ ░▒ ▒░ ▒ ░░ ░░   ░ ▒░  ░   ░    
+ ▒ ░░ ░ ░ ▒  ░        ░  ░  ░     ░         ░  ░░ ░   ░   ░        ░ ░░ ░  ▒ ░   ░   ░ ░ ░ ░   ░    
+ ░      ░ ░  ░ ░            ░     ░ ░       ░  ░  ░   ░  ░░ ░      ░  ░    ░           ░       ░    
+             ░                    ░                       ░                                                                  
 """
 
 banner_part2 = """
 v3.2
 By Khoilg
 """
-
 banner = banner_part1 + banner_part2
 
 def main():
@@ -178,56 +208,61 @@ def main():
         print("No API key found. Please add an API key with the -a option.")
         return
 
-    if args.i:
-        for ip in args.i:
-            result = check_ip_virustotal(ip, api_key)
-            if result:
-                results.append(result)
-                print_result(result)
+    try:
+        if args.i:
+            for ip in args.i:
+                if is_valid_ip(ip):
+                    result = check_ip_virustotal(ip, api_key)
+                    if result:
+                        results.append(result)
+                        print_result(result)
+                else:
+                    print(f"Invalid IP address: {ip}")
 
-    if args.m:
-        for md5 in args.m:
-            result = check_md5_virustotal(md5, api_key)
-            if result:
-                results.append(result)
-                print_result(result)
+        if args.m:
+            for md5 in args.m:
+                result = check_md5_virustotal(md5, api_key)
+                if result:
+                    results.append(result)
+                    print_result(result)
 
-    if args.d:
-        for domain in args.d:
-            result = check_domain_virustotal(domain, api_key)
-            if result:
-                results.append(result)
-                print_result(result)
+        if args.d:
+            for domain in args.d:
+                result = check_domain_virustotal(domain, api_key)
+                if result:
+                    results.append(result)
+                    print_result(result)
 
-    if args.file:
-        if os.path.isfile(args.file):
-            with open(args.file, 'r') as file:
-                for line in file:
-                    line = line.strip()
-                    if line:
-                        if all(char.isdigit() or char == '.' for char in line):
-                            result = check_ip_virustotal(line, api_key)
-                        elif '.' in line and not any(char.isdigit() for char in line.split('.')[0]):
-                            result = check_domain_virustotal(line, api_key)
-                        else:
-                            result = check_md5_virustotal(line, api_key)
-                        if result:
-                            results.append(result)
-                            print_result(result)
-        else:
-            print(f"The file {args.f} does not exist.")
-
-    if args.output:
-        output_dir = os.path.dirname(args.output)
-        if not output_dir:
-            output_dir = os.getcwd()
-        output_filename = f"IoC_Check_Result.{args.type}"
-        output_file = os.path.join(output_dir, output_filename)
-        if os.path.isdir(args.output):
-            output_file = os.path.join(args.output, output_filename)
-        save_results(results, output_file, args.type)
-
-
+        if args.file:
+            if os.path.isfile(args.file):
+                with open(args.file, 'r') as file:
+                    for line in file:
+                        line = line.strip()
+                        if line:
+                            if all(char.isdigit() or char == '.' for char in line):
+                                result = check_ip_virustotal(line, api_key)
+                            elif '.' in line and not any(char.isdigit() for char in line.split('.')[0]):
+                                result = check_domain_virustotal(line, api_key)
+                            else:
+                                result = check_md5_virustotal(line, api_key)
+                            if result:
+                                results.append(result)
+                                print_result(result)
+            else:
+                print(f"The file {args.f} does not exist.")
+    except Exception as e:
+        print(str(e))
+    finally:
+        if args.output:
+            output_dir = os.path.dirname(args.output)
+            if not output_dir:
+                output_dir = os.getcwd()
+            output_filename = f"IoC_Check_Result.{args.type}"
+            output_file = os.path.join(output_dir, output_filename)
+            if os.path.isdir(args.output):
+                output_file = os.path.join(args.output, output_filename)
+            save_results(results, output_file, args.type)
+    
 def save_results(results, output_file, file_type):
     existing_iocs = set()
 
@@ -294,7 +329,6 @@ def save_results(results, output_file, file_type):
             conn.close()
             print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
 
-
 def print_result(result):
     if 'IP' in result:
         print(f"IP: {result['IP']}")
@@ -306,7 +340,6 @@ def print_result(result):
     print(f"Score: {result['Score']}")
     print(f"Detected by: {result['Detected_by']}")
     print(f"Link: {result['Link']}\n")
-
 
 if __name__ == "__main__":
     main()
