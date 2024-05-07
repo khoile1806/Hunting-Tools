@@ -99,21 +99,25 @@ def save_api_key(api_key):
 
 
 def clear_api_key():
-    if os.path.exists(API_KEY_FILE):
+    """Clear the saved API key."""
+    try:
         os.remove(API_KEY_FILE)
         print("API key has been cleared.")
-    else:
+    except FileNotFoundError:
         print("No API key to clear.")
 
 
 def get_saved_api_key():
-    if os.path.exists(API_KEY_FILE):
+    """Retrieve the saved API key."""
+    try:
         with open(API_KEY_FILE, 'r') as file:
             return file.read().strip()
-    return None
+    except FileNotFoundError:
+        return None
 
 
 def parse_arguments():
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description='VirusTotal IoC Checker Created by Khoilg')
     parser.add_argument('-i', nargs='+', metavar='IP', help='Check one or more IP addresses')
     parser.add_argument('-m', nargs='+', metavar='MD5', help='Check one or more MD5 hashes')
@@ -128,18 +132,23 @@ def parse_arguments():
                         help='Check if the VirusTotal API key exists and display it.')
     return parser.parse_args()
 
-banner = """
 
-▄█ ████▄ ▄█▄       ▄▄▄▄▄       ▄█▄     ▄  █ ▄███▄   ▄█▄    █  █▀ ▄█    ▄     ▄▀  
-██ █   █ █▀ ▀▄    █     ▀▄     █▀ ▀▄  █   █ █▀   ▀  █▀ ▀▄  █▄█   ██     █  ▄▀    
-██ █   █ █   ▀  ▄  ▀▀▀▀▄       █   ▀  ██▀▀█ ██▄▄    █   ▀  █▀▄   ██ ██   █ █ ▀▄  
-▐█ ▀████ █▄  ▄▀  ▀▄▄▄▄▀        █▄  ▄▀ █   █ █▄   ▄▀ █▄  ▄▀ █  █  ▐█ █ █  █ █   █ 
- ▐       ▀███▀                 ▀███▀     █  ▀███▀   ▀███▀    █    ▐ █  █ █  ███  
-                                        ▀                   ▀       █   ██       
-                    
+banner_part1 = """
+
+██╗ ██████╗  ██████╗███████╗     ██████╗██╗  ██╗███████╗ ██████╗██╗  ██╗██╗███╗   ██╗ ██████╗ 
+██║██╔═══██╗██╔════╝██╔════╝    ██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝██║████╗  ██║██╔════╝ 
+██║██║   ██║██║     ███████╗    ██║     ███████║█████╗  ██║     █████╔╝ ██║██╔██╗ ██║██║  ███╗
+██║██║   ██║██║     ╚════██║    ██║     ██╔══██║██╔══╝  ██║     ██╔═██╗ ██║██║╚██╗██║██║   ██║
+██║╚██████╔╝╚██████╗███████║    ╚██████╗██║  ██║███████╗╚██████╗██║  ██╗██║██║ ╚████║╚██████╔╝
+╚═╝ ╚═════╝  ╚═════╝╚══════╝     ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝                             
+"""
+
+banner_part2 = """
 v3.2
 By Khoilg
 """
+
+banner = banner_part1 + banner_part2
 
 def main():
     print(Fore.RESET + banner)
