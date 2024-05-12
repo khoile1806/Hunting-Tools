@@ -4,6 +4,7 @@ import csv
 import json
 import socket
 import sqlite3
+import hashlib
 import requests
 import argparse
 from colorama import Fore
@@ -242,6 +243,16 @@ def is_valid_sha1(sha1):
         return False
     return True
 
+def hash_file(filename):
+    """This function returns the MD5 hash of the file."""
+    h = hashlib.md5()
+    with open(filename, 'rb') as file:
+        chunk = 0
+        while chunk != b'':
+            chunk = file.read(1024)
+            h.update(chunk)
+    return h.hexdigest()
+
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description='VirusTotal IoC Checker Created by Khoilg')
@@ -250,6 +261,7 @@ def parse_arguments():
     parser.add_argument('-sha256', nargs='+', metavar='SHA256', help='Check one or more SHA256 hashes')
     parser.add_argument('-sha1', nargs='+', metavar='SHA1', help='Check one or more SHA1 hashes')
     parser.add_argument('-d', nargs='+', metavar='DOMAIN', help='Check one or more domains')
+    parser.add_argument('-dir', '--directory', metavar='DIRECTORY', help='Check all files in a directory')
     parser.add_argument('-f', '--file', metavar='FILE', help='Check IoCs from a file containing one IoC per line')
     parser.add_argument('-o', '--output', metavar='OUTPUT_FILE', help='Save results to a file')
     parser.add_argument('-t', '--type', choices=['csv', 'db', 'txt'], default='txt',
@@ -275,7 +287,7 @@ banner_part1 = """
 """
 
 banner_part2 = """
-v3.2
+v3.1.2
 By Khoilg
 """
 banner = banner_part1 + banner_part2
@@ -348,6 +360,19 @@ def main():
                         print_result(result)
                 else:
                     print(f"Invalid SHA1 hash: {sha1}")
+
+        if args.directory:
+            if os.path.isdir(args.directory):
+                for root, dirs, files in os.walk(args.directory):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        md5 = hash_file(file_path)
+                        result = check_md5_virustotal(md5, api_key)
+                        if result:
+                            results.append(result)
+                            print_result(result)
+            else:
+                print(f"The directory {args.directory} does not exist.")
 
         if args.d:
             for domain in args.d:
