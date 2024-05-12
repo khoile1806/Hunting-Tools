@@ -10,11 +10,12 @@ from datetime import datetime
 
 API_KEY_FILE = 'api_key.txt'
 
+
 def check_ip_virustotal(ip, api_key):
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
     params = {'x-apikey': api_key}
     response = requests.get(url, headers=params)
-    
+
     if response.status_code != 200:
         if response.status_code == 401:
             raise Exception("Invalid API key")
@@ -22,17 +23,17 @@ def check_ip_virustotal(ip, api_key):
             raise Exception("API quota exceeded")
         else:
             raise Exception(f"Unexpected status code: {response.status_code}")
-    
+
     if response.ok:
         data = response.json()
         last_scanned = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         engines_detected = [engine for engine, detection in data['data']['attributes']['last_analysis_results'].items()
                             if detection['category'] == 'malicious']
         harmless_votes = data['data']['attributes']['last_analysis_stats']['harmless']
-        suspicous_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
+        suspicious_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
         undetected_votes = data['data']['attributes']['last_analysis_stats']['undetected']
         malicious_votes = data['data']['attributes']['last_analysis_stats']['malicious']
-        score = f"{malicious_votes}/{malicious_votes + harmless_votes + suspicous_votes + undetected_votes}"
+        score = f"{malicious_votes}/{malicious_votes + harmless_votes + suspicious_votes + undetected_votes}"
         result = {
             'IP': ip,
             'Last_scanned': last_scanned,
@@ -43,12 +44,13 @@ def check_ip_virustotal(ip, api_key):
         return result
     else:
         raise Exception(f"Unable to check the IP: {ip}")
-    
+
+
 def check_md5_virustotal(md5, api_key):
     url = "https://www.virustotal.com/vtapi/v2/file/report"
     params = {'apikey': api_key, 'resource': md5}
     response = requests.get(url, params=params)
-    
+
     if response.status_code != 200:
         if response.status_code == 401:
             raise Exception("Invalid API key")
@@ -56,7 +58,7 @@ def check_md5_virustotal(md5, api_key):
             raise Exception("API quota exceeded")
         else:
             raise Exception(f"Unexpected status code: {response.status_code}")
-    
+
     result = response.json()
     if result.get('response_code') == 1:
         scan_date_str = result.get('scan_date')
@@ -64,9 +66,10 @@ def check_md5_virustotal(md5, api_key):
             scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
         else:
             scan_date = datetime.fromtimestamp(scan_date_str)
-        
-        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if engine_data.get('detected')]
-        
+
+        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                            engine_data.get('detected')]
+
         result = {
             'MD5': md5,
             'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
@@ -79,11 +82,12 @@ def check_md5_virustotal(md5, api_key):
         print(response)
         raise Exception(f"Unable to check the MD5: {md5}")
 
+
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
     params = {'x-apikey': api_key}
     response = requests.get(url, headers=params)
-    
+
     if response.status_code != 200:
         if response.status_code == 401:
             raise Exception("Invalid API key")
@@ -91,16 +95,16 @@ def check_domain_virustotal(domain, api_key):
             raise Exception("API quota exceeded")
         else:
             raise Exception(f"Unexpected status code: {response.status_code}")
-    
+
     if response.ok:
         data = response.json()
         last_modified = data['data']['attributes']['last_modification_date']
         last_scanned = datetime.fromtimestamp(last_modified).strftime('%Y-%m-%d %H:%M:%S') if last_modified else 'N/A'
         malicious_votes = data['data']['attributes']['last_analysis_stats']['malicious']
         harmless_votes = data['data']['attributes']['last_analysis_stats']['harmless']
-        suspicous_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
+        suspicious_votes = data['data']['attributes']['last_analysis_stats']['suspicious']
         undetected_votes = data['data']['attributes']['last_analysis_stats']['undetected']
-        score = f"{malicious_votes}/{malicious_votes + harmless_votes + suspicous_votes + undetected_votes}"
+        score = f"{malicious_votes}/{malicious_votes + harmless_votes + suspicious_votes + undetected_votes}"
         detected_by = [engine_name for engine_name, scan_result in
                        data['data']['attributes']['last_analysis_results'].items() if
                        scan_result['category'] == 'malicious']
@@ -116,10 +120,12 @@ def check_domain_virustotal(domain, api_key):
     else:
         raise Exception(f"Unable to check the domain: {domain}")
 
+
 def save_api_key(api_key):
     with open(API_KEY_FILE, 'w') as file:
         file.write(api_key)
     print("API key saved successfully.")
+
 
 def clear_api_key():
     """Clear the saved API key."""
@@ -129,6 +135,7 @@ def clear_api_key():
     except FileNotFoundError:
         print("No API key to clear.")
 
+
 def get_saved_api_key():
     """Retrieve the saved API key."""
     try:
@@ -136,13 +143,15 @@ def get_saved_api_key():
             return file.read().strip()
     except FileNotFoundError:
         return None
-    
+
+
 def is_valid_ip(address):
-    try: 
+    try:
         socket.inet_aton(address)
         return True
     except:
         return False
+
 
 def parse_arguments():
     """Parse command-line arguments."""
@@ -159,6 +168,7 @@ def parse_arguments():
     parser.add_argument('-s', '--check-api', action='store_true',
                         help='Check if the VirusTotal API key exists and display it')
     return parser.parse_args()
+
 
 banner_part1 = """
 
@@ -179,6 +189,7 @@ v3.2
 By Khoilg
 """
 banner = banner_part1 + banner_part2
+
 
 def main():
     print(Fore.RESET + banner)
@@ -262,7 +273,8 @@ def main():
             if os.path.isdir(args.output):
                 output_file = os.path.join(args.output, output_filename)
             save_results(results, output_file, args.type)
-    
+
+
 def save_results(results, output_file, file_type):
     existing_iocs = set()
 
@@ -329,6 +341,7 @@ def save_results(results, output_file, file_type):
             conn.close()
             print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
 
+
 def print_result(result):
     if 'IP' in result:
         print(f"IP: {result['IP']}")
@@ -340,6 +353,7 @@ def print_result(result):
     print(f"Score: {result['Score']}")
     print(f"Detected by: {result['Detected_by']}")
     print(f"Link: {result['Link']}\n")
+
 
 if __name__ == "__main__":
     main()
