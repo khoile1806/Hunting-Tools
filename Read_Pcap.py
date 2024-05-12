@@ -5,7 +5,6 @@ import argparse
 from scapy.all import *
 from collections import Counter
 
-
 def get_ip_counts(packets, ip_layer, ip_field):
     ips = [packet[ip_layer].getfieldval(ip_field) for packet in packets if packet.haslayer(ip_layer)]
     return Counter(ips)
