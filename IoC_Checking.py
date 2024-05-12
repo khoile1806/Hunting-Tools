@@ -1,4 +1,5 @@
 import os
+import re
 import csv
 import json
 import socket
@@ -9,7 +10,6 @@ from colorama import Fore
 from datetime import datetime
 
 API_KEY_FILE = 'api_key.txt'
-
 
 def check_ip_virustotal(ip, api_key):
     url = f'https://www.virustotal.com/api/v3/ip_addresses/{ip}'
@@ -44,7 +44,6 @@ def check_ip_virustotal(ip, api_key):
         return result
     else:
         raise Exception(f"Unable to check the IP: {ip}")
-
 
 def check_md5_virustotal(md5, api_key):
     url = "https://www.virustotal.com/vtapi/v2/file/report"
@@ -82,6 +81,77 @@ def check_md5_virustotal(md5, api_key):
         print(response)
         raise Exception(f"Unable to check the MD5: {md5}")
 
+def check_sha256_virustotal(sha256, api_key):
+    url = "https://www.virustotal.com/vtapi/v2/file/report"
+    params = {'apikey': api_key, 'resource': sha256}
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        if response.status_code == 401:
+            raise Exception("Invalid API key")
+        elif response.status_code == 429:
+            raise Exception("API quota exceeded")
+        else:
+            raise Exception(f"Unexpected status code: {response.status_code}")
+
+    result = response.json()
+    if result.get('response_code') == 1:
+        scan_date_str = result.get('scan_date')
+        if isinstance(scan_date_str, str):
+            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+        else:
+            scan_date = datetime.fromtimestamp(scan_date_str)
+
+        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                            engine_data.get('detected')]
+
+        result = {
+            'SHA256': sha256,
+            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+            'Detected_by': ', '.join(engines_detected),
+            'Link': result.get('permalink')
+        }
+        return result
+    else:
+        print(response)
+        raise Exception(f"Unable to check the SHA256: {sha256}")
+
+def check_sha1_virustotal(sha1, api_key):
+    url = "https://www.virustotal.com/vtapi/v2/file/report"
+    params = {'apikey': api_key, 'resource': sha1}
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        if response.status_code == 401:
+            raise Exception("Invalid API key")
+        elif response.status_code == 429:
+            raise Exception("API quota exceeded")
+        else:
+            raise Exception(f"Unexpected status code: {response.status_code}")
+
+    result = response.json()
+    if result.get('response_code') == 1:
+        scan_date_str = result.get('scan_date')
+        if isinstance(scan_date_str, str):
+            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+        else:
+            scan_date = datetime.fromtimestamp(scan_date_str)
+
+        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                            engine_data.get('detected')]
+
+        result = {
+            'SHA1': sha1,
+            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+            'Detected_by': ', '.join(engines_detected),
+            'Link': result.get('permalink')
+        }
+        return result
+    else:
+        print(response)
+        raise Exception(f"Unable to check the SHA1: {sha1}")
 
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
@@ -120,12 +190,10 @@ def check_domain_virustotal(domain, api_key):
     else:
         raise Exception(f"Unable to check the domain: {domain}")
 
-
 def save_api_key(api_key):
     with open(API_KEY_FILE, 'w') as file:
         file.write(api_key)
     print("API key saved successfully.")
-
 
 def clear_api_key():
     """Clear the saved API key."""
@@ -135,7 +203,6 @@ def clear_api_key():
     except FileNotFoundError:
         print("No API key to clear.")
 
-
 def get_saved_api_key():
     """Retrieve the saved API key."""
     try:
@@ -144,7 +211,6 @@ def get_saved_api_key():
     except FileNotFoundError:
         return None
 
-
 def is_valid_ip(address):
     try:
         socket.inet_aton(address)
@@ -152,12 +218,37 @@ def is_valid_ip(address):
     except:
         return False
 
+def is_valid_md5(md5):
+    """Check if a string is a valid MD5 hash."""
+    if len(md5) != 32:
+        return False
+    if not re.match(r'[0-9a-fA-F]{32}', md5):
+        return False
+    return True
+
+def is_valid_sha256(sha256):
+    """Check if a string is a valid SHA256 hash."""
+    if len(sha256) != 64:
+        return False
+    if not re.match(r'[0-9a-fA-F]{64}', sha256):
+        return False
+    return True
+
+def is_valid_sha1(sha1):
+    """Check if a string is a valid SHA1 hash."""
+    if len(sha1) != 40:
+        return False
+    if not re.match(r'[0-9a-fA-F]{40}', sha1):
+        return False
+    return True
 
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description='VirusTotal IoC Checker Created by Khoilg')
     parser.add_argument('-i', nargs='+', metavar='IP', help='Check one or more IP addresses')
     parser.add_argument('-m', nargs='+', metavar='MD5', help='Check one or more MD5 hashes')
+    parser.add_argument('-sha256', nargs='+', metavar='SHA256', help='Check one or more SHA256 hashes')
+    parser.add_argument('-sha1', nargs='+', metavar='SHA1', help='Check one or more SHA1 hashes')
     parser.add_argument('-d', nargs='+', metavar='DOMAIN', help='Check one or more domains')
     parser.add_argument('-f', '--file', metavar='FILE', help='Check IoCs from a file containing one IoC per line')
     parser.add_argument('-o', '--output', metavar='OUTPUT_FILE', help='Save results to a file')
@@ -168,7 +259,6 @@ def parse_arguments():
     parser.add_argument('-s', '--check-api', action='store_true',
                         help='Check if the VirusTotal API key exists and display it')
     return parser.parse_args()
-
 
 banner_part1 = """
 
@@ -189,7 +279,6 @@ v3.2
 By Khoilg
 """
 banner = banner_part1 + banner_part2
-
 
 def main():
     print(Fore.RESET + banner)
@@ -232,10 +321,33 @@ def main():
 
         if args.m:
             for md5 in args.m:
-                result = check_md5_virustotal(md5, api_key)
-                if result:
-                    results.append(result)
-                    print_result(result)
+                if is_valid_md5(md5):
+                    result = check_md5_virustotal(md5, api_key)
+                    if result:
+                        results.append(result)
+                        print_result(result)
+                else:
+                    print(f"Invalid MD5 hash: {md5}")
+
+        if args.sha256:
+            for sha256 in args.sha256:
+                if is_valid_sha256(sha256):
+                    result = check_sha256_virustotal(sha256, api_key)
+                    if result:
+                        results.append(result)
+                        print_result(result)
+                else:
+                    print(f"Invalid SHA256 hash: {sha256}")
+
+        if args.sha1:
+            for sha1 in args.sha1:
+                if is_valid_sha1(sha1):
+                    result = check_sha1_virustotal(sha1, api_key)
+                    if result:
+                        results.append(result)
+                        print_result(result)
+                else:
+                    print(f"Invalid SHA1 hash: {sha1}")
 
         if args.d:
             for domain in args.d:
@@ -273,7 +385,6 @@ def main():
             if os.path.isdir(args.output):
                 output_file = os.path.join(args.output, output_filename)
             save_results(results, output_file, args.type)
-
 
 def save_results(results, output_file, file_type):
     existing_iocs = set()
@@ -341,7 +452,6 @@ def save_results(results, output_file, file_type):
             conn.close()
             print(f"=> DB File results are saved in {os.path.abspath(output_file)}")
 
-
 def print_result(result):
     if 'IP' in result:
         print(f"IP: {result['IP']}")
@@ -353,7 +463,6 @@ def print_result(result):
     print(f"Score: {result['Score']}")
     print(f"Detected by: {result['Detected_by']}")
     print(f"Link: {result['Link']}\n")
-
 
 if __name__ == "__main__":
     main()
