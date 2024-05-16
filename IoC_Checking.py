@@ -1,6 +1,7 @@
 import os
 import re
 import csv
+import time
 import json
 import socket
 import sqlite3
@@ -47,112 +48,134 @@ def check_ip_virustotal(ip, api_key):
         raise Exception(f"Unable to check the IP: {ip}")
 
 def check_md5_virustotal(md5, api_key):
-    url = "https://www.virustotal.com/vtapi/v2/file/report"
+    url = f'https://www.virustotal.com/vtapi/v2/file/report'
     params = {'apikey': api_key, 'resource': md5}
-    response = requests.get(url, params=params)
 
-    if response.status_code != 200:
-        if response.status_code == 401:
-            raise Exception("Invalid API key")
-        elif response.status_code == 429:
-            raise Exception("API quota exceeded")
+    max_retries = 5
+    for attempt in range(max_retries):
+        response = requests.get(url, params=params)
+
+        if response.status_code == 204:
+            print(f"Received status code 204 for MD5: {md5}. Retrying...")
+            time.sleep(3)
+            continue
+        elif response.status_code != 200:
+            if response.status_code == 401:
+                raise Exception("Invalid API key")
+            elif response.status_code == 429:
+                raise Exception("API quota exceeded")
+            else:
+                raise Exception(f"Unexpected status code: {response.status_code}")
+
+        result = response.json()
+        if result.get('response_code') == 1:
+            scan_date_str = result.get('scan_date')
+            if isinstance(scan_date_str, str):
+                scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                scan_date = datetime.fromtimestamp(scan_date_str)
+
+            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                                engine_data.get('detected')]
+            result = {
+                'MD5': md5,
+                'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+                'Detected_by': ', '.join(engines_detected),
+                'Link': result.get('permalink')
+            }
+            return result
         else:
-            raise Exception(f"Unexpected status code: {response.status_code}")
-
-    result = response.json()
-    if result.get('response_code') == 1:
-        scan_date_str = result.get('scan_date')
-        if isinstance(scan_date_str, str):
-            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
-        else:
-            scan_date = datetime.fromtimestamp(scan_date_str)
-
-        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
-                            engine_data.get('detected')]
-
-        result = {
-            'MD5': md5,
-            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
-            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
-            'Detected_by': ', '.join(engines_detected),
-            'Link': result.get('permalink')
-        }
-        return result
-    else:
-        print(response)
-        raise Exception(f"Unable to check the MD5: {md5}")
+            raise Exception(f"Unable to check the MD5: {md5}")
+    raise Exception(f"Failed to retrieve data for MD5: {md5} after {max_retries} attempts")
 
 def check_sha256_virustotal(sha256, api_key):
-    url = "https://www.virustotal.com/vtapi/v2/file/report"
+    url = f'https://www.virustotal.com/vtapi/v2/file/report'
     params = {'apikey': api_key, 'resource': sha256}
     response = requests.get(url, params=params)
 
-    if response.status_code != 200:
-        if response.status_code == 401:
-            raise Exception("Invalid API key")
-        elif response.status_code == 429:
-            raise Exception("API quota exceeded")
+    max_retries = 5
+    for attempt in range(max_retries):
+        response = requests.get(url, params=params)
+
+        if response.status_code == 204:
+            print(f"Received status code 204 for MD5: {sha256}. Retrying...")
+            time.sleep(3)
+            continue
+        elif response.status_code != 200:
+            if response.status_code == 401:
+                raise Exception("Invalid API key")
+            elif response.status_code == 429:
+                raise Exception("API quota exceeded")
+            else:
+                raise Exception(f"Unexpected status code: {response.status_code}")
+
+        result = response.json()
+        if result.get('response_code') == 1:
+            scan_date_str = result.get('scan_date')
+            if isinstance(scan_date_str, str):
+                scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                scan_date = datetime.fromtimestamp(scan_date_str)
+
+            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                                engine_data.get('detected')]
+            result = {
+                'SHA256': sha256,
+                'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+                'Detected_by': ', '.join(engines_detected),
+                'Link': result.get('permalink')
+            }
+            return result
         else:
-            raise Exception(f"Unexpected status code: {response.status_code}")
-
-    result = response.json()
-    if result.get('response_code') == 1:
-        scan_date_str = result.get('scan_date')
-        if isinstance(scan_date_str, str):
-            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
-        else:
-            scan_date = datetime.fromtimestamp(scan_date_str)
-
-        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
-                            engine_data.get('detected')]
-
-        result = {
-            'SHA256': sha256,
-            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
-            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
-            'Detected_by': ', '.join(engines_detected),
-            'Link': result.get('permalink')
-        }
-        return result
-    else:
-        print(response)
-        raise Exception(f"Unable to check the SHA256: {sha256}")
+            print(response)
+            raise Exception(f"Unable to check the SHA256: {sha256}")
+    raise Exception(f"Failed to retrieve data for MD5: {sha256} after {max_retries} attempts")
 
 def check_sha1_virustotal(sha1, api_key):
-    url = "https://www.virustotal.com/vtapi/v2/file/report"
+    url = f'https://www.virustotal.com/vtapi/v2/file/report'
     params = {'apikey': api_key, 'resource': sha1}
     response = requests.get(url, params=params)
 
-    if response.status_code != 200:
-        if response.status_code == 401:
-            raise Exception("Invalid API key")
-        elif response.status_code == 429:
-            raise Exception("API quota exceeded")
+    max_retries = 5
+    for attempt in range(max_retries):
+        response = requests.get(url, params=params)
+
+        if response.status_code == 204:
+            print(f"Received status code 204 for MD5: {sha1}. Retrying...")
+            time.sleep(3)
+            continue
+        elif response.status_code != 200:
+            if response.status_code == 401:
+                raise Exception("Invalid API key")
+            elif response.status_code == 429:
+                raise Exception("API quota exceeded")
+            else:
+                raise Exception(f"Unexpected status code: {response.status_code}")
+
+        result = response.json()
+        if result.get('response_code') == 1:
+            scan_date_str = result.get('scan_date')
+            if isinstance(scan_date_str, str):
+                scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                scan_date = datetime.fromtimestamp(scan_date_str)
+
+            engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
+                                engine_data.get('detected')]
+            result = {
+                'SHA1': sha1,
+                'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
+                'Detected_by': ', '.join(engines_detected),
+                'Link': result.get('permalink')
+            }
+            return result
         else:
-            raise Exception(f"Unexpected status code: {response.status_code}")
-
-    result = response.json()
-    if result.get('response_code') == 1:
-        scan_date_str = result.get('scan_date')
-        if isinstance(scan_date_str, str):
-            scan_date = datetime.strptime(scan_date_str, '%Y-%m-%d %H:%M:%S')
-        else:
-            scan_date = datetime.fromtimestamp(scan_date_str)
-
-        engines_detected = [engine_name for engine_name, engine_data in result.get('scans', {}).items() if
-                            engine_data.get('detected')]
-
-        result = {
-            'SHA1': sha1,
-            'Last_scanned': scan_date.strftime('%Y-%m-%d %H:%M:%S'),
-            'Score': f"{result.get('positives', 0)}/{result.get('total', 0)}",
-            'Detected_by': ', '.join(engines_detected),
-            'Link': result.get('permalink')
-        }
-        return result
-    else:
-        print(response)
-        raise Exception(f"Unable to check the SHA1: {sha1}")
+            print(response)
+            raise Exception(f"Unable to check the SHA1: {sha1}")
+    raise Exception(f"Failed to retrieve data for MD5: {sha1} after {max_retries} attempts")
 
 def check_domain_virustotal(domain, api_key):
     url = f'https://www.virustotal.com/api/v3/domains/{domain}'
@@ -253,6 +276,16 @@ def hash_file(filename):
             h.update(chunk)
     return h.hexdigest()
 
+def calculate_md5_hash(filename):
+    """This function returns the MD5 hash of the file."""
+    h = hashlib.md5()
+    with open(filename, 'rb') as file:
+        chunk = 0
+        while chunk != b'':
+            chunk = file.read(1024)
+            h.update(chunk)
+    return h.hexdigest()
+
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description='VirusTotal IoC Checker Created by Khoilg')
@@ -287,7 +320,7 @@ banner_part1 = """
 """
 
 banner_part2 = """
-v3.1.2
+v3.1.4
 By Khoilg
 """
 banner = banner_part1 + banner_part2
@@ -363,14 +396,27 @@ def main():
 
         if args.directory:
             if os.path.isdir(args.directory):
-                for root, dirs, files in os.walk(args.directory):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        md5 = hash_file(file_path)
-                        result = check_md5_virustotal(md5, api_key)
-                        if result:
-                            results.append(result)
-                            print_result(result)
+                files = os.listdir(args.directory)
+                if not files:
+                    print(f"The directory {args.directory} is empty.")
+                else:
+                    with open('hashes.txt', 'w') as hashes_file:
+                        for root, dirs, files in os.walk(args.directory):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                md5 = calculate_md5_hash(file_path)
+                                hashes_file.write(md5 + '\n')
+
+                    with open('hashes.txt', 'r') as hashes_file:
+                        for line in hashes_file:
+                            md5 = line.strip()
+                            try:
+                                result = check_md5_virustotal(md5, api_key)
+                                if result:
+                                    results.append(result)
+                                    print_result(result)
+                            except Exception as e:
+                                print(e)
             else:
                 print(f"The directory {args.directory} does not exist.")
 
