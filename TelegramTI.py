@@ -54,7 +54,7 @@ async def main():
     while True:
         logging.info("Checking for new articles")
         articles = await get_latest_articles()
-        tasks = [send_message_via_telegram(bot, f"{title}\n{link}") for title, link in articles[:5]]  # Gửi 5 bài viết mới nhất
+        tasks = [send_message_via_telegram(bot, f"{title}\n{link}") for title, link in articles[:5]]
         if tasks:
             await asyncio.gather(*tasks)
         logging.info("Sleeping for 10 minutes")
