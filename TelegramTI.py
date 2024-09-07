@@ -15,7 +15,6 @@ logging.basicConfig(
 
 TELEGRAM_TOKEN = ''
 CHAT_ID = ''
-
 URL = 'https://thehackernews.com/'
 
 sent_articles = set()
@@ -23,24 +22,28 @@ sent_articles = set()
 async def get_latest_articles():
     logging.info("Fetching latest articles from The Hacker News")
     async with aiohttp.ClientSession() as session:
-        async with session.get(URL) as response:
-            if response.status != 200:
-                logging.error(f"Failed to retrieve articles: {response.status}")
-                return []
+        try:
+            async with session.get(URL) as response:
+                if response.status != 200:
+                    logging.error(f"Failed to retrieve articles: {response.status}")
+                    return []
 
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
 
-            articles = []
-            for item in soup.find_all('div', class_='body-post clear'):
-                title = item.find('h2', class_='home-title').get_text(strip=True)
-                link = item.find('a', class_='story-link')['href']
-                if link not in sent_articles:
-                    articles.append((title, link))
-                    sent_articles.add(link)
-                    logging.info(f"New article found: {title} - {link}")
+                articles = []
+                for item in soup.find_all('div', class_='body-post clear'):
+                    title = item.find('h2', class_='home-title').get_text(strip=True)
+                    link = item.find('a', class_='story-link')['href']
+                    if link not in sent_articles:
+                        articles.append((title, link))
+                        sent_articles.add(link)
+                        logging.info(f"New article found: {title} - {link}")
 
-            return articles
+                return articles
+        except Exception as e:
+            logging.error(f"Error fetching articles: {e}")
+            return []
 
 async def send_message_via_telegram(bot, message):
     try:
@@ -51,14 +54,15 @@ async def send_message_via_telegram(bot, message):
 
 async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
+    sleep_duration = 600  # Default to 10 minutes
     while True:
         logging.info("Checking for new articles")
         articles = await get_latest_articles()
-        tasks = [send_message_via_telegram(bot, f"{title}\n{link}") for title, link in articles[:5]]
+        tasks = [send_message_via_telegram(bot, f"{title}\n{link}") for title, link in articles[:10]]
         if tasks:
             await asyncio.gather(*tasks)
-        logging.info("Sleeping for 10 minutes")
-        await asyncio.sleep(60 * 10)
+        logging.info(f"Sleeping for {sleep_duration // 60} minutes")
+        await asyncio.sleep(sleep_duration)
 
 if __name__ == "__main__":
     logging.info("Starting bot")
