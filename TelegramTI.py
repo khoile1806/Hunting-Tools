@@ -1,8 +1,8 @@
 import aiohttp
-from bs4 import BeautifulSoup
 import asyncio
 import logging
 from telegram import Bot
+from bs4 import BeautifulSoup
 
 logging.basicConfig(
     level=logging.INFO,
