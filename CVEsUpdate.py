@@ -15,8 +15,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = '7422491101:AAHbaJDPGLXhY67zMcT7P2Q2_qPsITD5_Kk'
-CHAT_ID = '6229763712'
+TELEGRAM_TOKEN = ''
+CHAT_ID = ''
 CVE_API_URL = 'https://cve.circl.lu/api/last'
 CHECK_INTERVAL = 600
 sent_cve_ids = set()
