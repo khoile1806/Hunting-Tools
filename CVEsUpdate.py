@@ -19,7 +19,6 @@ TELEGRAM_TOKEN = ''
 CHAT_ID = ''
 CVE_API_URL = 'https://cve.circl.lu/api/last'
 CHECK_INTERVAL = 600
-sent_cve_ids = set()
 SENT_CVE_FILE = 'CVES_ID.txt'
 
 async def send_telegram_message(bot, chat_id, message, retries=3):
@@ -67,12 +66,23 @@ async def process_cves(bot, cves, sent_cve_ids):
         cve_id = cve.get('id')
         if cve_id and cve_id not in sent_cve_ids:
             summary = cve.get('summary', 'No summary available')
-            message = f"CVE ID: {cve_id}\nSummary: {summary}"
+            cwe = cve.get('cwe', 'N/A')
+            references = '\n'.join(cve.get('references', 'N/A'))
+            published = cve.get('Published', 'N/A')
+
+            message = (
+                f"CVE ID: {cve_id}\n"
+                f"CWE: {cwe}\n"
+                f"Published: {published}\n"
+                f"Summary: {summary}\n"
+                f"References: {references}\n"
+            )
             tasks.append(asyncio.create_task(send_telegram_message(bot, CHAT_ID, message)))
             sent_cve_ids.add(cve_id)
             save_sent_cve_id(cve_id)
     if tasks:
         await asyncio.gather(*tasks)
+
 async def main():
     bot = Bot(token=TELEGRAM_TOKEN)
     sent_cve_ids = load_sent_cve_ids()
