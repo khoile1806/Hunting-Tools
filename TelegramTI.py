@@ -13,8 +13,8 @@ logging.basicConfig(
     ]
 )
 
-TELEGRAM_TOKEN = '7171385980:AAHts1yco75v-q3mvha4H4n6QZrUmffPGV4'
-CHAT_ID = '6229763712'
+TELEGRAM_TOKEN = ''
+CHAT_ID = ''
 URL = 'https://thehackernews.com/'
 
 sent_articles = set()
