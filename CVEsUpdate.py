@@ -113,7 +113,7 @@ async def send_daily_report(bot):
         await send_telegram_message(bot, CHAT_ID, "No CVEs found today.")
     finally:
         async with aiofiles.open(DAILY_REPORT_FILE, 'w') as f:
-            await f.truncate(0)  # Clear the report file
+            await f.truncate(0)
 
 async def check_internet_connection():
     try:
