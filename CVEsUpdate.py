@@ -21,7 +21,6 @@ CHAT_ID = ''
 CVE_API_URL = 'https://cve.circl.lu/api/last'
 CHECK_INTERVAL = 600
 SENT_CVE_FILE = 'CVES_ID.txt'
-DAILY_REPORT_FILE = 'daily_report.txt'
 
 async def send_telegram_message(bot, chat_id, message, retries=3):
     for attempt in range(retries):
@@ -86,34 +85,8 @@ async def process_cves(bot, cves, sent_cve_ids):
             tasks.append(asyncio.create_task(send_telegram_message(bot, CHAT_ID, message)))
             sent_cve_ids.add(cve_id)
             await save_sent_cve_id(cve_id)
-            await save_daily_report(cve_id, summary, cwe, published, references)
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-
-async def save_daily_report(cve_id, summary, cwe, published, references):
-    async with aiofiles.open(DAILY_REPORT_FILE, 'a') as f:
-        await f.write(
-            f"• CVE ID: {cve_id}\n"
-            f"• CWE: {cwe}\n"
-            f"• Published: {published}\n"
-            f"• Summary: {summary}\n"
-            f"• References: {references}\n"
-        )
-
-async def send_daily_report(bot):
-    try:
-        async with aiofiles.open(DAILY_REPORT_FILE, 'r') as f:
-            report = await f.read()
-        cve_count = report.count('• CVE ID:')
-        if cve_count > 0:
-            await send_telegram_message(bot, CHAT_ID, f"Number of CVEs found today: {cve_count}")
-        else:
-            await send_telegram_message(bot, CHAT_ID, "No CVEs found today.")
-    except FileNotFoundError:
-        await send_telegram_message(bot, CHAT_ID, "No CVEs found today.")
-    finally:
-        async with aiofiles.open(DAILY_REPORT_FILE, 'w') as f:
-            await f.truncate(0)
 
 async def check_internet_connection():
     try:
