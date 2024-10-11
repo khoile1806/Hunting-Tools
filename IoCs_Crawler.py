@@ -5,7 +5,15 @@ import logging
 import requests
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("IoCs_Crawler.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = ''
 TELEGRAM_CHAT_ID = ''
