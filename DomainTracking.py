@@ -65,7 +65,7 @@ async def process_domains(domains, api_key, output_csv):
             await asyncio.sleep(2)
 
 if __name__ == "__main__":
-    api_key = "e117024a39f1b3edf064777cd7bc77bdbab441b3801e3a6e6483fedd317378586a9386977ddf95b3"
+    api_key = ""
     file_path = "ioc.txt"
     output_csv = "results.csv"
 
