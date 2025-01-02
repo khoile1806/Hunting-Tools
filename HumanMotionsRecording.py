@@ -89,8 +89,8 @@ def send_summary_notification():
 def start_video_capture():
     global video_writer, video_filename, video_start_time, last_motion_time
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    video_filename = os.path.join(output_dir, f'video_{timestamp}.avi')
-    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'XVID'), 20.0, (640, 480))
+    video_filename = os.path.join(output_dir, f'video_{timestamp}.mp4')  # Đảm bảo đuôi là .mp4
+    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'H264'), 20.0, (640, 480))  # Sử dụng codec H264
     video_start_time = datetime.datetime.now()
     last_motion_time = time.time()
     log_event(f"Started video recording: {video_filename}")
