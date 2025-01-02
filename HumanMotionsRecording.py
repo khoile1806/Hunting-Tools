@@ -71,18 +71,21 @@ def send_telegram_notification(message, urgent=False):
         log_event("Notification skipped to avoid noise.")
 
 
-# Function to send summary notifications
-def send_summary_notification():
-    global event_counter, last_summary_time
-    summary_message = (
-        f"\U0001F4CA Tóm tắt sự kiện:\n"
-        f"\U0001F464 Khuôn mặt: {event_counter['faces']} lần\n"
-        f"\U0001F463 Người: {event_counter['upper_bodies']} lần\n"
-        f"\U0001F504 Chuyển động: {event_counter['motions']} lần"
-    )
-    send_telegram_notification(summary_message)
-    event_counter = {"faces": 0, "upper_bodies": 0, "motions": 0}  # Reset counters
-    last_summary_time = time.time()
+# Function to send video to Telegram
+def send_telegram_video(video_path, caption=""):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
+    files = {'video': open(video_path, 'rb')}
+    data = {'chat_id': CHAT_ID, 'caption': caption}
+    try:
+        response = requests.post(url, data=data, files=files)
+        if response.status_code == 200:
+            log_event(f"Telegram video sent successfully: {video_path}")
+        else:
+            log_event(f"Failed to send video: {response.text}")
+    except Exception as e:
+        log_event(f"Error sending video: {e}")
+    finally:
+        files['video'].close()
 
 
 # Function to start video recording
@@ -90,14 +93,14 @@ def start_video_capture():
     global video_writer, video_filename, video_start_time, last_motion_time
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     video_filename = os.path.join(output_dir, f'video_{timestamp}.avi')
-    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640, 480))
+    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'XVID'), 20.0, (640, 480))
     video_start_time = datetime.datetime.now()
     last_motion_time = time.time()
     log_event(f"Started video recording: {video_filename}")
     send_telegram_notification("\U0001F3A5 Đang bắt đầu ghi hình vì phát hiện chuyển động của người!", urgent=True)
 
 
-# Function to stop video recording
+# Function to stop video recording and send video to Telegram
 def stop_video_capture():
     global video_writer, video_filename
     if video_writer is not None:
@@ -107,17 +110,17 @@ def stop_video_capture():
         video_size = os.path.getsize(video_filename)
         log_event(f"Stopped video recording: {video_filename}")
         log_event(f"Video duration: {video_duration} seconds, Size: {video_size / (1024 * 1024):.2f} MB")
-        send_telegram_notification(
-            f"\U0001F6D1 Đã dừng ghi hình. Video dài {video_duration} giây, dung lượng {video_size / (1024 * 1024):.2f} MB")
+        send_telegram_video(
+            video_filename,
+            caption=f"\U0001F6D1 Đã dừng ghi hình. Video dài {video_duration} giây, dung lượng {video_size / (1024 * 1024):.2f} MB"
+        )
 
 
 # Motion detection using contours
 def detect_motion(frame):
     fgmask = fgbg.apply(frame)
-    if fgmask is None or fgmask.size == 0:
-        return False  # Nếu không có dữ liệu trong fgmask, không phát hiện chuyển động
-
     contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
     motion_detected = False
     for contour in contours:
         if cv2.contourArea(contour) > 1000:  # Ngưỡng tối thiểu để nhận diện chuyển động
@@ -175,7 +178,7 @@ while True:
     # Stop video capture if no motion or person detected
     if video_writer is not None:
         if not person_detected or not motion_detected:
-            if time.time() - last_motion_time > 20:
+            if time.time() - last_motion_time > 5:
                 stop_video_capture()
 
     # Update last_motion_time if motion or person detected
@@ -184,7 +187,11 @@ while True:
 
     # Send summary notifications every 30 seconds
     if time.time() - last_summary_time > notification_interval:
-        send_summary_notification()
+        send_telegram_notification(
+            f"Tóm tắt sự kiện: Khuôn mặt: {event_counter['faces']} lần, Người: {event_counter['upper_bodies']} lần, Chuyển động: {event_counter['motions']} lần"
+        )
+        event_counter = {"faces": 0, "upper_bodies": 0, "motions": 0}  # Reset counters
+        last_summary_time = time.time()
 
     # Show the frame
     cv2.imshow('Webcam - Motion and Person Detection', frame)
