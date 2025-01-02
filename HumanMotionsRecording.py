@@ -89,8 +89,8 @@ def send_summary_notification():
 def start_video_capture():
     global video_writer, video_filename, video_start_time, last_motion_time
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    video_filename = os.path.join(output_dir, f'video_{timestamp}.mp4')  # Đảm bảo đuôi là .mp4
-    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'H264'), 20.0, (640, 480))  # Sử dụng codec H264
+    video_filename = os.path.join(output_dir, f'video_{timestamp}.avi')
+    video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640, 480))
     video_start_time = datetime.datetime.now()
     last_motion_time = time.time()
     log_event(f"Started video recording: {video_filename}")
@@ -114,8 +114,10 @@ def stop_video_capture():
 # Motion detection using contours
 def detect_motion(frame):
     fgmask = fgbg.apply(frame)
-    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if fgmask is None or fgmask.size == 0:
+        return False  # Nếu không có dữ liệu trong fgmask, không phát hiện chuyển động
 
+    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     motion_detected = False
     for contour in contours:
         if cv2.contourArea(contour) > 1000:  # Ngưỡng tối thiểu để nhận diện chuyển động
