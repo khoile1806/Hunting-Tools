@@ -7,9 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(filename='download_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 
-api_id = 28481769
-api_hash = 'c58bdb541e474921038b6731a365c484'
-phone_number = '+84338703362'
+api_id = ''
+api_hash = ''
+phone_number = ''
 
 output_folder = 'videos'
 os.makedirs(output_folder, exist_ok=True)
@@ -81,7 +81,7 @@ async def download_videos_from_channel(channel_name):
     except Exception as e:
         logging.error(f"Error downloading videos from channel {channel_name}: {e}")
 
-channel_name = 'KLGTestChannel_bot'
+channel_name = ''
 
 with client:
     client.loop.run_until_complete(download_videos_from_channel(channel_name))
