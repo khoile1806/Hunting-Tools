@@ -1,10 +1,10 @@
 import os
 import cv2
 import time
+import glob
+import logging
 import datetime
 import requests
-import logging
-import glob
 
 logging.basicConfig(filename='event_log.txt', level=logging.INFO,
                     format='%(asctime)s - %(message)s')
