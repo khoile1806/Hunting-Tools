@@ -3,7 +3,6 @@ import shutil
 import asyncio
 import logging
 from telethon import TelegramClient
-from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(filename='download_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -65,23 +64,46 @@ async def download_video(message, downloaded_videos, semaphore):
             return None
     return None
 
-async def download_videos_from_channel(channel_name):
+async def download_videos(channel_input):
     await client.start(phone=phone_number)
-    logging.info(f"Successfully connected. Downloading videos from channel: {channel_name}")
-    downloaded_videos = get_downloaded_videos()
+    logging.info(f"Successfully connected.")
 
+    downloaded_videos = get_downloaded_videos()
     semaphore = asyncio.Semaphore(20)
 
     try:
-        channel = await client.get_entity(channel_name)
+        if channel_input.startswith('https://t.me/'):
+            channel = await client.get_entity(channel_input)
+        else:
+            channel = await client.get_entity(channel_input)
+
         messages = [message async for message in client.iter_messages(channel) if message.media and hasattr(message.media, 'video')]
         tasks = [download_video(message, downloaded_videos, semaphore) for message in messages]
         results = await asyncio.gather(*tasks)
         logging.info(f"\nDownloaded {len([r for r in results if r])} videos.")
     except Exception as e:
-        logging.error(f"Error downloading videos from channel {channel_name}: {e}")
+        logging.error(f"Error downloading videos: {e}")
 
-channel_name = ''
+while True:
+    print("Select download method:")
+    print("1. Download by channel name")
+    print("2. Download by invite link")
+    print("3. Exit")
 
-with client:
-    client.loop.run_until_complete(download_videos_from_channel(channel_name))
+    choice = input("Enter your choice (1, 2, or 3): ")
+
+    if choice == "1":
+        channel_name = input("Enter the channel name: ")
+        with client:
+            client.loop.run_until_complete(download_videos(channel_name))
+        break
+    elif choice == "2":
+        channel_link = input("Enter the invite link: ")
+        with client:
+            client.loop.run_until_complete(download_videos(channel_link))
+        break
+    elif choice == "3":
+        print("Exiting the program.")
+        break
+    else:
+        print("Invalid choice, please try again.")
