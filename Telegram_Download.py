@@ -126,7 +126,6 @@ async def download_by_type(channel_input, media_type):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
     semaphore = asyncio.Semaphore(10)
-
     try:
         messages = [
             message async for message in client.iter_messages(channel_input)

@@ -8,18 +8,14 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt
 
-# Cấu hình logging
 logging.basicConfig(filename='download_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Khởi tạo rich console
 console = Console()
 
-# Thông tin API Telegram
 api_id = ''
 api_hash = ''
 phone_number = ''
 
-# Thư mục tải xuống
 output_folder = 'downloads'
 video_folder = os.path.join(output_folder, 'videos')
 image_folder = os.path.join(output_folder, 'images')
@@ -28,11 +24,9 @@ os.makedirs(video_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)
 os.makedirs(file_folder, exist_ok=True)
 
-# Tệp lưu trạng thái tải xuống
 status_file = 'download_status.txt'
 client = TelegramClient('session_name', api_id, api_hash)
 
-# Hàm định dạng kích thước tệp
 def format_size(size_in_bytes):
     if size_in_bytes < 1024:
         return f"{size_in_bytes} B"
@@ -43,7 +37,6 @@ def format_size(size_in_bytes):
     else:
         return f"{size_in_bytes / (1024 ** 3):.2f} GB"
 
-# Hàm lấy thời lượng video
 def get_video_duration(attributes):
     for attr in attributes:
         if hasattr(attr, "duration"):
@@ -51,19 +44,16 @@ def get_video_duration(attributes):
             return f"{minutes}m {seconds}s"
     return "Unknown duration"
 
-# Hàm lấy danh sách tệp đã tải xuống
 def get_downloaded_files():
     if os.path.exists(status_file):
         with open(status_file, 'r') as f:
             return set(f.read().splitlines())
     return set()
 
-# Hàm lưu tên tệp đã tải xuống
 def save_downloaded_file(file_name):
     with open(status_file, 'a') as f:
         f.write(file_name + '\n')
 
-# Hàm tải xuống tệp
 async def download_media(message, downloaded_files, semaphore, media_type, progress, task):
     if media_type == "video" and hasattr(message.media, 'video'):
         file_name = message.file.name or f"Video_{message.id}.mp4"
@@ -111,7 +101,6 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
         console.print(f"[red]Error downloading {file_name}.[/red]")
         return None
 
-# Hàm lấy thông tin kênh
 async def get_channel_info(channel_input):
     try:
         await client.start(phone=phone_number)
@@ -136,8 +125,6 @@ async def get_channel_info(channel_input):
         logging.error(f"Error getting channel info: {e}")
         console.print(f"[red]Error: {e}[/red]")
         return 0, 0, 0, None
-
-# Hàm tải xuống theo loại tệp
 
 async def download_by_type(channel_input, media_type):
     await client.start(phone=phone_number)
