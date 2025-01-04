@@ -2,14 +2,13 @@ import os
 import shutil
 import asyncio
 import logging
-from telethon import TelegramClient
+from telethon import TelegramClient, types
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt
 
 logging.basicConfig(filename='download_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
-
 console = Console()
 
 api_id = ''
@@ -54,16 +53,16 @@ def save_downloaded_file(file_name):
     with open(status_file, 'a') as f:
         f.write(file_name + '\n')
 
-async def download_media(message, downloaded_files, semaphore, media_type, progress, task):
-    if media_type == "video" and hasattr(message.media, 'video'):
+async def download_media(message, downloaded_files, semaphore, media_type, progress):
+    if media_type == "video" and isinstance(message.media, types.MessageMediaDocument):
         file_name = message.file.name or f"Video_{message.id}.mp4"
         file_folder_path = video_folder
         duration = get_video_duration(message.media.document.attributes) if message.media.document else "Unknown duration"
-    elif media_type == "image" and hasattr(message.media, 'photo'):
+    elif media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto):
         file_name = message.file.name or f"Image_{message.id}.jpg"
         file_folder_path = image_folder
         duration = None
-    elif media_type == "file" and hasattr(message.media, 'document'):
+    elif media_type == "file" and isinstance(message.media, types.MessageMediaDocument):
         file_name = message.file.name or f"File_{message.id}"
         file_folder_path = file_folder
         duration = None
@@ -77,10 +76,10 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
     file_size = format_size(message.file.size) if message.file else "Unknown size"
     temp_file_path = os.path.join(file_folder_path, f"tmp_{file_name}")
     console.print(f"[green]Starting download: {file_name} | Size: {file_size} | {'Duration: ' + duration if duration else ''}[/green]")
+    task = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
 
     def progress_callback(current, total):
-        progress.update(task, advance=current - progress.tasks[task].completed)
-
+        progress.update(task, completed=current)
     try:
         async with semaphore:
             await client.download_media(
@@ -113,11 +112,11 @@ async def get_channel_info(channel_input):
 
         async for message in client.iter_messages(channel):
             if message.media:
-                if hasattr(message.media, 'video'):
+                if isinstance(message.media, types.MessageMediaDocument):
                     videos.append(message)
-                elif hasattr(message.media, 'photo'):
+                elif isinstance(message.media, types.MessageMediaPhoto):
                     images.append(message)
-                elif hasattr(message.media, 'document'):
+                elif isinstance(message.media, types.MessageMediaDocument):
                     files.append(message)
 
         return len(videos), len(images), len(files), channel
@@ -129,15 +128,15 @@ async def get_channel_info(channel_input):
 async def download_by_type(channel_input, media_type):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
-    semaphore = asyncio.Semaphore(20)  # Giữ nguyên số lượng tác vụ đồng thời
-
+    semaphore = asyncio.Semaphore(10)
     try:
         messages = [
             message async for message in client.iter_messages(channel_input)
-            if message.media and hasattr(message.media, media_type)
+            if message.media and (
+                (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
+                (media_type == "document" and isinstance(message.media, types.MessageMediaDocument))
+            )
         ]
-        total_size = sum(message.file.size for message in messages if message.file)
-
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -145,22 +144,19 @@ async def download_by_type(channel_input, media_type):
             TimeRemainingColumn(),
             console=console
         ) as progress:
-            task = progress.add_task("[cyan]Downloading...", total=total_size)
-            tasks = [download_media(message, downloaded_files, semaphore, media_type, progress, task) for message in messages]
+            tasks = [download_media(message, downloaded_files, semaphore, media_type, progress) for message in messages]
             results = await asyncio.gather(*tasks)
             console.print(f"[green]Downloaded {len([r for r in results if r])} {media_type}s.[/green]")
     except Exception as e:
         logging.error(f"Error downloading {media_type}s: {e}")
         console.print(f"[red]Error downloading {media_type}s: {e}[/red]")
 
-# Hàm chính
 async def main():
     while True:
         console.print("\n[bold]Select download method:[/bold]")
         console.print("1. Download by channel name")
         console.print("2. Download by invite link")
         console.print("3. Exit")
-
         choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3"])
 
         if choice in [1, 2]:
