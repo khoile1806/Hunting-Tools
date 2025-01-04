@@ -2,16 +2,18 @@ import os
 import shutil
 import asyncio
 import logging
-from telethon import TelegramClient, types
-from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
-from rich.table import Table
-from rich.prompt import Prompt, IntPrompt, Confirm
-from rich.panel import Panel
 from rich.text import Text
+from rich.panel import Panel
+from rich.table import Table
+from rich.console import Console
+from rich.prompt import Prompt, IntPrompt
+from telethon import TelegramClient, types
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 
 logging.basicConfig(filename='download_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 console = Console()
+
+# https://my.telegram.org/auth
 
 api_id = ''
 api_hash = ''
