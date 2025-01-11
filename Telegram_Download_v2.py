@@ -86,9 +86,36 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
         console.print(f"[yellow]{media_type.capitalize()} {file_name} already downloaded, skipping.[/yellow]")
         return None
 
-    file_size = format_size(message.file.size) if message.file else "Unknown size"
+    file_size = message.file.size if message.file else 0
+    file_size_str = format_size(file_size)
     temp_file_path = os.path.join(file_folder_path, f"tmp_{file_name}")
-    console.print(f"[green]Starting download: {file_name} | Size: {file_size} | {'Duration: ' + duration if duration else ''}[/green]")
+    console.print(f"[green]Starting download: {file_name} | Size: {file_size_str} | {'Duration: ' + duration if duration else ''}[/green]")
+
+    def progress_callback(current, total):
+        progress.update(task_id, completed=current, description=f"[cyan]Downloading {file_name} ({format_size(current)}/{file_size_str})...[/cyan]")
+
+    for attempt in range(retries):
+        try:
+            async with semaphore:
+                await client.download_media(
+                    message.media,
+                    file=temp_file_path,
+                    progress_callback=progress_callback
+                )
+            final_path = os.path.join(file_folder_path, file_name)
+            shutil.move(temp_file_path, final_path)
+            save_downloaded_file(file_name)
+            console.print(f"[green]Download complete: {final_path}[/green]")
+            logging.info(f"{media_type.capitalize()} downloaded successfully: {final_path}")
+            return file_name
+        except Exception as e:
+            logging.error(f"Attempt {attempt + 1} failed: Error downloading {media_type} {file_name}: {e}")
+            console.print(f"[red]Attempt {attempt + 1} failed: Error downloading {file_name}.[/red]")
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+            if attempt == retries - 1:
+                console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
+                return None
 
     def progress_callback(current, total):
         progress.update(task_id, completed=current)
@@ -155,7 +182,7 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
 async def download_by_type(channel_input, media_type, start_date=None, end_date=None):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(20)
     success_count = 0
     try:
         messages = [
@@ -282,7 +309,6 @@ async def get_detailed_timeline(channel_input, start_date=None, end_date=None):
         await client.start(phone=phone_number)
         channel = await client.get_entity(channel_input)
         detailed_timeline = []
-
         async for message in client.iter_messages(channel):
             message_date = message.date.strftime("%d/%m/%Y")
 
@@ -340,8 +366,6 @@ async def download_by_name(channel_input, file_name):
         downloaded_files = get_downloaded_files()
         semaphore = asyncio.Semaphore(10)
         matching_messages = []
-        success_count = 0
-
         async for message in client.iter_messages(channel_input):
             if message.media:
                 current_file_name = message.file.name or f"File_{message.id}"
@@ -353,6 +377,219 @@ async def download_by_name(channel_input, file_name):
             return
 
         table = Table(title=f"Files containing '{file_name}'")
+        table.add_column("#", justify="center")
+        table.add_column("Type", justify="center")
+        table.add_column("Name", justify="left")
+        table.add_column("Size", justify="center")
+        table.add_column("Extension", justify="center")
+        table.add_column("Resolution", justify="center")
+        table.add_column("Duration", justify="center")
+        for index, message in enumerate(matching_messages, start=1):
+            file_info = {
+                "type": "File",
+                "name": None,
+                "size": None,
+                "extension": None,
+                "resolution": None,
+                "duration": None
+            }
+            if hasattr(message.file, "name") and message.file.name:
+                file_info["name"] = message.file.name
+                file_info["extension"] = os.path.splitext(message.file.name)[1].lower()
+            else:
+                file_info["name"] = f"File_{message.id}"
+                file_info["extension"] = "Unknown"
+
+            if hasattr(message.file, "size"):
+                file_info["size"] = format_size(message.file.size)
+            else:
+                file_info["size"] = "Unknown size"
+
+            if isinstance(message.media, types.MessageMediaPhoto):
+                file_info["type"] = "Image"
+                if hasattr(message.media, "photo") and hasattr(message.media.photo, "sizes"):
+                    for size in message.media.photo.sizes:
+                        if hasattr(size, "w") and hasattr(size, "h"):
+                            file_info["resolution"] = f"{size.w}x{size.h}"
+                            break
+
+            elif isinstance(message.media, types.MessageMediaDocument):
+                attributes = message.media.document.attributes
+                if any(isinstance(attr, types.DocumentAttributeVideo) for attr in attributes):
+                    file_info["type"] = "Video"
+                    file_info["duration"] = get_video_duration(attributes)
+                    for attr in attributes:
+                        if isinstance(attr, types.DocumentAttributeVideo):
+                            file_info["resolution"] = f"{attr.w}x{attr.h}"
+                            break
+
+            table.add_row(
+                str(index),
+                file_info["type"],
+                shorten(file_info["name"], width=30, placeholder="..."),
+                file_info["size"],
+                file_info["extension"],
+                file_info["resolution"] if file_info["resolution"] else "N/A",
+                file_info["duration"] if file_info["duration"] else "N/A"
+            )
+
+        console.print(table)
+        while True:
+            choice = Prompt.ask(
+                "Enter file numbers (e.g., '1,3,5'), 'all' to download all, or 'cancel' to skip",
+                default="cancel"
+            )
+
+            if choice == "cancel":
+                console.print("[yellow]Download cancelled.[/yellow]")
+                return
+            elif choice == "all":
+                selected_indices = range(len(matching_messages))
+                break
+            else:
+                try:
+                    selected_indices = [int(idx.strip()) - 1 for idx in choice.split(",")]
+                    if all(0 <= idx < len(matching_messages) for idx in selected_indices):
+                        break
+                    else:
+                        console.print("[red]Invalid file numbers. Please try again.[/red]")
+                except ValueError:
+                    console.print("[red]Invalid input. Please enter numbers separated by commas.[/red]")
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),  # Giữ lại một cột phần trăm
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            total_size = sum(message.file.size for message in [matching_messages[idx] for idx in selected_indices])
+            overall_task = progress.add_task(f"[green]Downloading {len(selected_indices)} files ({format_size(total_size)})...", total=total_size)
+            for idx in selected_indices:
+                message = matching_messages[idx]
+                current_file_name = message.file.name or f"File_{message.id}"
+                file_size = message.file.size if message.file else 0
+                file_size_str = format_size(file_size)
+
+                if isinstance(message.media, types.MessageMediaPhoto):
+                    media_type = "photo"
+                elif isinstance(message.media, types.MessageMediaDocument):
+                    if any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes):
+                        media_type = "video"
+                    else:
+                        media_type = "document"
+                else:
+                    media_type = "file"
+
+                task_id = progress.add_task(f"[cyan]Downloading {current_file_name} ({file_size_str})...", total=file_size)
+                await download_media(message, downloaded_files, semaphore, media_type, progress, task_id)
+                progress.update(overall_task, advance=file_size)
+
+        console.print(f"[green]Download completed.[/green]")
+    except Exception as e:
+        logging.error(f"Error downloading file by name: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+
+def display_detailed_timeline(detailed_timeline, title):
+    if detailed_timeline:
+        table = Table(title=title)
+        table.add_column("Type", justify="center")
+        table.add_column("Name", justify="left")
+        table.add_column("Size", justify="center")
+        table.add_column("Extension", justify="center")
+        table.add_column("Resolution", justify="center")
+        table.add_column("Duration", justify="center")
+        for item in detailed_timeline:
+            display_name = shorten(item["name"], width=30, placeholder="...")
+            table.add_row(
+                item["type"],
+                display_name,
+                item["size"],
+                item["extension"],
+                item["resolution"] if item["resolution"] else "N/A",
+                item["duration"] if item["duration"] else "N/A"
+            )
+
+        console.print(table)
+    else:
+        console.print(f"[red]No media found.[/red]")
+
+def display_file_type_menu(channel_name):
+    console.clear()
+    console.print(Panel.fit(
+        Text(f"Downloading from: {channel_name}", style="bold blue"),
+        border_style="green"
+    ))
+    menu_options = [
+        ("1", "Download Media"),
+        ("2", "Show media count"),
+        ("3", "View Timeline"),
+        ("4", "View Detailed Timeline"),
+        ("5", "Search by File Size"),
+        ("6", "Back to Main Menu"),
+        ("7", "Exit")
+    ]
+    menu_table = Table(show_header=False, box=None, padding=(0, 2))
+    for option, description in menu_options:
+        menu_table.add_row(
+            Text(option, style="bold yellow"),
+            Text(description, style="cyan")
+        )
+
+    console.print(Panel(menu_table, title="File Type Menu", border_style="blue"))
+
+def display_download_menu():
+    console.clear()
+    console.print(Panel.fit(
+        Text("Download Media", style="bold blue"),
+        border_style="green"
+    ))
+    menu_options = [
+        ("1", "Download All Video"),
+        ("2", "Download All Image"),
+        ("3", "Download All File"),
+        ("4", "Download by Name"),
+        ("5", "Download by Date Range"),
+        ("6", "Back to Previous Menu")
+    ]
+    menu_table = Table(show_header=False, box=None, padding=(0, 2))
+    for option, description in menu_options:
+        menu_table.add_row(
+            Text(option, style="bold yellow"),
+            Text(description, style="cyan")
+        )
+
+    console.print(Panel(menu_table, title="Download Menu", border_style="blue"))
+
+async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, size_range=None):
+    try:
+        await client.start(phone=phone_number)
+        size_bytes = size_gb * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
+        tolerance_bytes = tolerance * 1024 * 1024 * 1024  # Sai số cho phép (tính bằng byte)
+        matching_messages = []
+        async for message in client.iter_messages(channel_input):
+            if message.media and hasattr(message.file, "size"):
+                file_size = message.file.size
+                if search_type == "less" and file_size < size_bytes:
+                    matching_messages.append(message)
+                elif search_type == "greater" and file_size > size_bytes:
+                    matching_messages.append(message)
+                elif search_type == "equal" and abs(file_size - size_bytes) <= tolerance_bytes:
+                    matching_messages.append(message)
+                elif search_type == "range" and size_range:
+                    min_size_bytes = size_range[0] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
+                    max_size_bytes = size_range[1] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
+                    if min_size_bytes <= file_size <= max_size_bytes:
+                        matching_messages.append(message)
+
+        if not matching_messages:
+            if search_type == "range":
+                console.print(f"[yellow]No files found within the size range {size_range[0]} GB to {size_range[1]} GB.[/yellow]")
+            else:
+                console.print(f"[yellow]No files found with size {search_type} than {size_gb} GB.[/yellow]")
+            return
+
+        table = Table(title=f"Files with size {search_type} than {size_gb} GB" if search_type != "range" else f"Files within size range {size_range[0]} GB to {size_range[1]} GB")
         table.add_column("Type", justify="center")
         table.add_column("Name", justify="left")
         table.add_column("Size", justify="center")
@@ -408,105 +645,23 @@ async def download_by_name(channel_input, file_name):
             )
 
         console.print(table)
-
-        confirm = Prompt.ask("Do you want to download all these files?", choices=["y", "n"], default="y")
-        if confirm.lower() != "y":
-            console.print("[yellow]Download cancelled.[/yellow]")
-            return
-
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=console
-        ) as progress:
-            overall_task = progress.add_task(f"[green]Downloading {len(matching_messages)} files...", total=len(matching_messages))
-            for message in matching_messages:
-                current_file_name = message.file.name or f"File_{message.id}"
-                if isinstance(message.media, types.MessageMediaPhoto):
-                    media_type = "photo"
-                elif isinstance(message.media, types.MessageMediaDocument):
-                    if any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes):
-                        media_type = "video"
-                    else:
-                        media_type = "document"
-                else:
-                    media_type = "file"
-
-                task_id = progress.add_task(f"[cyan]Downloading {current_file_name}...", total=message.file.size)
-                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, task_id)
-                if file_name:
-                    success_count += 1
-                progress.update(overall_task, advance=1)
-
-        console.print(f"[green]Downloaded {success_count} files out of {len(matching_messages)}.[/green]")
+        # Hiển thị tổng số file được tìm thấy
+        console.print(f"[green]Total files found: {len(matching_messages)}[/green]")
     except Exception as e:
-        logging.error(f"Error downloading file by name: {e}")
+        logging.error(f"Error searching by file size: {e}")
         console.print(f"[red]Error: {e}[/red]")
 
-def display_detailed_timeline(detailed_timeline, title):
-    if detailed_timeline:
-        table = Table(title=title)
-        table.add_column("Type", justify="center")
-        table.add_column("Name", justify="left")
-        table.add_column("Size", justify="center")
-        table.add_column("Extension", justify="center")
-        table.add_column("Resolution", justify="center")
-        table.add_column("Duration", justify="center")
-        for item in detailed_timeline:
-            display_name = shorten(item["name"], width=30, placeholder="...")
-            table.add_row(
-                item["type"],
-                display_name,
-                item["size"],
-                item["extension"],
-                item["resolution"] if item["resolution"] else "N/A",
-                item["duration"] if item["duration"] else "N/A"
-            )
-
-        console.print(table)
-    else:
-        console.print(f"[red]No media found.[/red]")
-
-def display_file_type_menu(channel_name):
-    console.clear()
+def display_size_search_menu():
     console.print(Panel.fit(
-        Text(f"Downloading from: {channel_name}", style="bold blue"),
+        Text("Search by File Size", style="bold blue"),
         border_style="green"
     ))
     menu_options = [
-        ("1", "Download Media"),
-        ("2", "Show media count"),
-        ("3", "View Timeline"),
-        ("4", "View Detailed Timeline"),
-        ("5", "Back to Main Menu"),
-        ("6", "Exit")
-    ]
-
-    menu_table = Table(show_header=False, box=None, padding=(0, 2))
-    for option, description in menu_options:
-        menu_table.add_row(
-            Text(option, style="bold yellow"),
-            Text(description, style="cyan")
-        )
-
-    console.print(Panel(menu_table, title="File Type Menu", border_style="blue"))
-
-def display_download_menu():
-    console.clear()
-    console.print(Panel.fit(
-        Text("Download Media", style="bold blue"),
-        border_style="green"
-    ))
-    menu_options = [
-        ("1", "Download All Video"),
-        ("2", "Download All Image"),
-        ("3", "Download All File"),
-        ("4", "Download by Name"),
-        ("5", "Download by Date Range"),
-        ("6", "Back to Previous Menu")
+        ("1", "Find files smaller than specified size"),
+        ("2", "Find files larger than specified size"),
+        ("3", "Find files equal to specified size (with tolerance)"),
+        ("4", "Find files within a size range"),
+        ("5", "Back to Previous Menu ")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -515,7 +670,7 @@ def display_download_menu():
             Text(description, style="cyan")
         )
 
-    console.print(Panel(menu_table, title="Download Menu", border_style="blue"))
+    console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
 async def main():
     while True:
@@ -528,13 +683,8 @@ async def main():
                 channel_input = Prompt.ask("Enter the invite link")
             while True:
                 display_file_type_menu(channel_input)
-                file_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
-                if file_choice == 5:
-                    break
-                elif file_choice == 6:
-                    console.print("[bold]Exiting the program.[/bold]")
-                    return
-                elif file_choice == 1:
+                file_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
+                if file_choice == 1:
                     while True:
                         display_download_menu()
                         download_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
@@ -643,6 +793,32 @@ async def main():
                         console.print(f"[bold]Fetching detailed timeline from {start_date} to {end_date}...[/bold]")
                         detailed_timeline = await get_detailed_timeline(channel_input, start_date=start_date, end_date=end_date)
                         display_detailed_timeline(detailed_timeline, f"Detailed Timeline from {start_date} to {end_date}")
+                elif file_choice == 5:
+                    while True:
+                        display_size_search_menu()
+                        size_search_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+                        if size_search_choice == 5:
+                            break
+                        elif size_search_choice == 1:
+                            size_gb = float(Prompt.ask("Enter the file size in GB (e.g., 1 for 1GB)"))
+                            await search_by_size(channel_input, size_gb, "less")
+                        elif size_search_choice == 2:
+                            size_gb = float(Prompt.ask("Enter the file size in GB (e.g., 1 for 1GB)"))
+                            await search_by_size(channel_input, size_gb, "greater")
+                        elif size_search_choice == 3:
+                            size_gb = float(Prompt.ask("Enter the file size in GB (e.g., 1 for 1GB)"))
+                            tolerance_percent = float(Prompt.ask("Enter the tolerance percentage (e.g., 5 for 5%)", default="5"))
+                            tolerance = tolerance_percent / 100
+                            await search_by_size(channel_input, size_gb, "equal", tolerance)
+                        elif size_search_choice == 4:
+                            min_size_gb = float(Prompt.ask("Enter the minimum file size in GB (e.g., 0.5 for 500MB)"))
+                            max_size_gb = float(Prompt.ask("Enter the maximum file size in GB (e.g., 1.5 for 1.5GB)"))
+                            await search_by_size(channel_input, 0, "range", size_range=(min_size_gb, max_size_gb))
+                elif file_choice == 6:
+                    break
+                elif file_choice == 7:
+                    console.print("[bold]Exiting the program.[/bold]")
+                    return
         elif choice == 3:
             console.print("[bold]Exiting the program.[/bold]")
             break
