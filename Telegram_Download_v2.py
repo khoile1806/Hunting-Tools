@@ -565,8 +565,8 @@ def display_download_menu():
 async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, size_range=None):
     try:
         await client.start(phone=phone_number)
-        size_bytes = size_gb * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
-        tolerance_bytes = tolerance * 1024 * 1024 * 1024  # Sai số cho phép (tính bằng byte)
+        size_bytes = size_gb * 1024 * 1024 * 1024
+        tolerance_bytes = tolerance * 1024 * 1024 * 1024
         matching_messages = []
         async for message in client.iter_messages(channel_input):
             if message.media and hasattr(message.file, "size"):
@@ -578,8 +578,8 @@ async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, si
                 elif search_type == "equal" and abs(file_size - size_bytes) <= tolerance_bytes:
                     matching_messages.append(message)
                 elif search_type == "range" and size_range:
-                    min_size_bytes = size_range[0] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
-                    max_size_bytes = size_range[1] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
+                    min_size_bytes = size_range[0] * 1024 * 1024 * 1024
+                    max_size_bytes = size_range[1] * 1024 * 1024 * 1024
                     if min_size_bytes <= file_size <= max_size_bytes:
                         matching_messages.append(message)
 
@@ -672,7 +672,6 @@ def display_size_search_menu():
         )
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
-
 
 async def list_all_chats_with_member_count():
     try:
