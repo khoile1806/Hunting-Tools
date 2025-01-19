@@ -8,7 +8,6 @@ from rich.panel import Panel
 from rich.table import Table
 from datetime import datetime
 from rich.console import Console
-from collections import defaultdict
 from rich.prompt import Prompt, IntPrompt
 from telethon import TelegramClient, types
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
@@ -243,7 +242,9 @@ def display_main_menu():
     menu_options = [
         ("1", "Download by channel name"),
         ("2", "Download by invite link"),
-        ("3", "Exit")
+        ("3", "Download by Chat ID"),
+        ("4", "List all chats/channels/groups"),
+        ("5", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -672,15 +673,118 @@ def display_size_search_menu():
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
+
+async def list_all_chats_with_member_count():
+    try:
+        await client.start(phone=phone_number)
+        dialogs = await client.get_dialogs()
+
+        table = Table(title="All Chats/Channels/Groups")
+        table.add_column("Chat Name", justify="left")
+        table.add_column("Chat ID", justify="center")
+        table.add_column("Last Message ID", justify="center")
+        table.add_column("Type", justify="center")
+        table.add_column("Member Count", justify="center")
+
+        for dialog in dialogs:
+            chat_name = dialog.name if hasattr(dialog, "name") else "Unknown"
+            chat_id = dialog.id
+            last_message_id = dialog.message.id if hasattr(dialog, "message") else "N/A"
+            chat_type = "Channel" if dialog.is_channel else "Group" if dialog.is_group else "Private Chat"
+            member_count = "N/A"
+            if dialog.is_group or dialog.is_channel:
+                try:
+                    participants = await client.get_participants(dialog.entity)
+                    member_count = len(participants)
+                except Exception as e:
+                    if dialog.is_channel and hasattr(dialog.entity, "participants_count"):
+                        member_count = dialog.entity.participants_count
+                    else:
+                        logging.error(f"Error getting member count for chat {chat_id}: {e}")
+                        console.print(f"[yellow]No permission to get member count for {chat_name}.[/yellow]")
+                        member_count = "No Permission"
+
+            table.add_row(
+                chat_name,
+                str(chat_id),
+                str(last_message_id),
+                chat_type,
+                str(member_count)
+            )
+
+        console.print(table)
+    except Exception as e:
+        logging.error(f"Error listing chats: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+
+async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=None):
+    await client.start(phone=phone_number)
+    downloaded_files = get_downloaded_files()
+    semaphore = asyncio.Semaphore(20)
+    success_count = 0
+    try:
+        chat_entity = await client.get_entity(chat_id)
+        messages = [
+            message async for message in client.iter_messages(chat_entity)
+            if message.media and (
+                (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
+                (media_type == "video" and isinstance(message.media, types.MessageMediaDocument) and
+                 any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes)) or
+                (media_type == "document" and isinstance(message.media, types.MessageMediaDocument) and
+                 not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
+            )
+        ]
+        if start_date and end_date:
+            start_date_obj = datetime.strptime(start_date, "%d/%m/%Y")
+            end_date_obj = datetime.strptime(end_date, "%d/%m/%Y")
+            messages = [
+                message for message in messages
+                if start_date_obj <= message.date.replace(tzinfo=None) <= end_date_obj
+            ]
+
+        total_files = len(messages)
+        if total_files == 0:
+            console.print(f"[yellow]No {media_type}s found to download.[/yellow]")
+            return
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            overall_task = progress.add_task(f"[green]Downloading {total_files} {media_type}s...", total=total_files)
+            file_tasks = {}
+            for message in messages:
+                file_name = message.file.name or f"{media_type}_{message.id}"
+                file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
+
+            for message in messages:
+                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
+                if file_name:
+                    success_count += 1
+                    progress.update(overall_task, advance=1)
+
+        console.print(f"[green]Downloaded {success_count} {media_type}s out of {total_files}.[/green]")
+    except Exception as e:
+        logging.error(f"Error downloading {media_type}s: {e}")
+        console.print(f"[red]Error downloading {media_type}s: {e}[/red]")
+
 async def main():
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3"])
-        if choice in [1, 2]:
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+        if choice in [1, 2, 3]:
             if choice == 1:
                 channel_input = Prompt.ask("Enter the channel name")
-            else:
+            elif choice == 2:
                 channel_input = Prompt.ask("Enter the invite link")
+            elif choice == 3:
+                chat_id_input = IntPrompt.ask("Enter the Chat ID")
+                channel_input = chat_id_input
+
             while True:
                 display_file_type_menu(channel_input)
                 file_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
@@ -819,7 +923,9 @@ async def main():
                 elif file_choice == 7:
                     console.print("[bold]Exiting the program.[/bold]")
                     return
-        elif choice == 3:
+        elif choice == 4:
+            await list_all_chats_with_member_count()
+        elif choice == 5:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
