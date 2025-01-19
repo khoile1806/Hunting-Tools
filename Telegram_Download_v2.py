@@ -646,7 +646,6 @@ async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, si
             )
 
         console.print(table)
-        # Hiển thị tổng số file được tìm thấy
         console.print(f"[green]Total files found: {len(matching_messages)}[/green]")
     except Exception as e:
         logging.error(f"Error searching by file size: {e}")
