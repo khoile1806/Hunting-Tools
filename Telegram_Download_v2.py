@@ -14,9 +14,9 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, 
 
 # https://my.telegram.org/auth
 
-api_id = ''
-api_hash = ''
-phone_number = ''
+api_id = '26177712'
+api_hash = 'e386805d10d6318d27fe06fbe2056d49'
+phone_number = '+84398326272'
 
 main_folder = 'telegram_downloads'
 os.makedirs(main_folder, exist_ok=True)
@@ -81,10 +81,7 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
     else:
         return None
 
-    if file_name in downloaded_files:
-        console.print(f"[yellow]{media_type.capitalize()} {file_name} already downloaded, skipping.[/yellow]")
-        return None
-
+    file_name = get_unique_filename(file_folder_path, file_name)
     file_size = message.file.size if message.file else 0
     file_size_str = format_size(file_size)
     temp_file_path = os.path.join(file_folder_path, f"tmp_{file_name}")
@@ -116,31 +113,13 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
                 console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
                 return None
 
-    def progress_callback(current, total):
-        progress.update(task_id, completed=current)
-
-    for attempt in range(retries):
-        try:
-            async with semaphore:
-                await client.download_media(
-                    message.media,
-                    file=temp_file_path,
-                    progress_callback=progress_callback
-                )
-            final_path = os.path.join(file_folder_path, file_name)
-            shutil.move(temp_file_path, final_path)
-            save_downloaded_file(file_name)
-            console.print(f"[green]Download complete: {final_path}[/green]")
-            logging.info(f"{media_type.capitalize()} downloaded successfully: {final_path}")
-            return file_name
-        except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed: Error downloading {media_type} {file_name}: {e}")
-            console.print(f"[red]Attempt {attempt + 1} failed: Error downloading {file_name}.[/red]")
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-            if attempt == retries - 1:
-                console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
-                return None
+def get_unique_filename(file_folder_path, file_name):
+    base_name, extension = os.path.splitext(file_name)
+    counter = 1
+    while os.path.exists(os.path.join(file_folder_path, file_name)):
+        file_name = f"{base_name}_{counter}{extension}"
+        counter += 1
+    return file_name
 
 async def get_timeline_overview(channel_input, start_date=None, end_date=None):
     try:
@@ -154,7 +133,6 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
         async for message in client.iter_messages(channel):
             message_date = message.date
             message_date_str = message_date.strftime("%d/%m/%Y")
-
             if (not start_date_obj and not end_date_obj) or (
                 start_date_obj and end_date_obj and start_date_obj <= message_date <= end_date_obj
             ) or (start_date_obj and not end_date_obj and message_date.strftime("%d/%m/%Y") == start_date):
@@ -440,7 +418,6 @@ async def download_by_name(channel_input, file_name):
                 "Enter file numbers (e.g., '1,3,5'), 'all' to download all, or 'cancel' to skip",
                 default="cancel"
             )
-
             if choice == "cancel":
                 console.print("[yellow]Download cancelled.[/yellow]")
                 return
@@ -460,7 +437,7 @@ async def download_by_name(channel_input, file_name):
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),  # Giữ lại một cột phần trăm
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeRemainingColumn(),
             console=console
         ) as progress:
@@ -672,6 +649,7 @@ def display_size_search_menu():
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
+
 async def list_all_chats_with_member_count():
     try:
         await client.start(phone=phone_number)
@@ -732,6 +710,7 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
                  not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
             )
         ]
+
         if start_date and end_date:
             start_date_obj = datetime.strptime(start_date, "%d/%m/%Y")
             end_date_obj = datetime.strptime(end_date, "%d/%m/%Y")
