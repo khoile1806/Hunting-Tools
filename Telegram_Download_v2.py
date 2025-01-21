@@ -8,16 +8,15 @@ from rich.panel import Panel
 from rich.table import Table
 from datetime import datetime
 from rich.console import Console
-from collections import defaultdict
 from rich.prompt import Prompt, IntPrompt
 from telethon import TelegramClient, types
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 
 # https://my.telegram.org/auth
 
-api_id = ''
-api_hash = ''
-phone_number = ''
+api_id = '26177712'
+api_hash = 'e386805d10d6318d27fe06fbe2056d49'
+phone_number = '+84398326272'
 
 main_folder = 'telegram_downloads'
 os.makedirs(main_folder, exist_ok=True)
@@ -82,10 +81,7 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
     else:
         return None
 
-    if file_name in downloaded_files:
-        console.print(f"[yellow]{media_type.capitalize()} {file_name} already downloaded, skipping.[/yellow]")
-        return None
-
+    file_name = get_unique_filename(file_folder_path, file_name)
     file_size = message.file.size if message.file else 0
     file_size_str = format_size(file_size)
     temp_file_path = os.path.join(file_folder_path, f"tmp_{file_name}")
@@ -117,31 +113,13 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
                 console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
                 return None
 
-    def progress_callback(current, total):
-        progress.update(task_id, completed=current)
-
-    for attempt in range(retries):
-        try:
-            async with semaphore:
-                await client.download_media(
-                    message.media,
-                    file=temp_file_path,
-                    progress_callback=progress_callback
-                )
-            final_path = os.path.join(file_folder_path, file_name)
-            shutil.move(temp_file_path, final_path)
-            save_downloaded_file(file_name)
-            console.print(f"[green]Download complete: {final_path}[/green]")
-            logging.info(f"{media_type.capitalize()} downloaded successfully: {final_path}")
-            return file_name
-        except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed: Error downloading {media_type} {file_name}: {e}")
-            console.print(f"[red]Attempt {attempt + 1} failed: Error downloading {file_name}.[/red]")
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-            if attempt == retries - 1:
-                console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
-                return None
+def get_unique_filename(file_folder_path, file_name):
+    base_name, extension = os.path.splitext(file_name)
+    counter = 1
+    while os.path.exists(os.path.join(file_folder_path, file_name)):
+        file_name = f"{base_name}_{counter}{extension}"
+        counter += 1
+    return file_name
 
 async def get_timeline_overview(channel_input, start_date=None, end_date=None):
     try:
@@ -155,7 +133,6 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
         async for message in client.iter_messages(channel):
             message_date = message.date
             message_date_str = message_date.strftime("%d/%m/%Y")
-
             if (not start_date_obj and not end_date_obj) or (
                 start_date_obj and end_date_obj and start_date_obj <= message_date <= end_date_obj
             ) or (start_date_obj and not end_date_obj and message_date.strftime("%d/%m/%Y") == start_date):
@@ -243,7 +220,9 @@ def display_main_menu():
     menu_options = [
         ("1", "Download by channel name"),
         ("2", "Download by invite link"),
-        ("3", "Exit")
+        ("3", "Download by Chat ID"),
+        ("4", "List all chats/channels/groups"),
+        ("5", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -439,7 +418,6 @@ async def download_by_name(channel_input, file_name):
                 "Enter file numbers (e.g., '1,3,5'), 'all' to download all, or 'cancel' to skip",
                 default="cancel"
             )
-
             if choice == "cancel":
                 console.print("[yellow]Download cancelled.[/yellow]")
                 return
@@ -459,7 +437,7 @@ async def download_by_name(channel_input, file_name):
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),  # Giữ lại một cột phần trăm
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeRemainingColumn(),
             console=console
         ) as progress:
@@ -564,8 +542,8 @@ def display_download_menu():
 async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, size_range=None):
     try:
         await client.start(phone=phone_number)
-        size_bytes = size_gb * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
-        tolerance_bytes = tolerance * 1024 * 1024 * 1024  # Sai số cho phép (tính bằng byte)
+        size_bytes = size_gb * 1024 * 1024 * 1024
+        tolerance_bytes = tolerance * 1024 * 1024 * 1024
         matching_messages = []
         async for message in client.iter_messages(channel_input):
             if message.media and hasattr(message.file, "size"):
@@ -577,8 +555,8 @@ async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, si
                 elif search_type == "equal" and abs(file_size - size_bytes) <= tolerance_bytes:
                     matching_messages.append(message)
                 elif search_type == "range" and size_range:
-                    min_size_bytes = size_range[0] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
-                    max_size_bytes = size_range[1] * 1024 * 1024 * 1024  # Chuyển đổi GB sang byte
+                    min_size_bytes = size_range[0] * 1024 * 1024 * 1024
+                    max_size_bytes = size_range[1] * 1024 * 1024 * 1024
                     if min_size_bytes <= file_size <= max_size_bytes:
                         matching_messages.append(message)
 
@@ -645,7 +623,6 @@ async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, si
             )
 
         console.print(table)
-        # Hiển thị tổng số file được tìm thấy
         console.print(f"[green]Total files found: {len(matching_messages)}[/green]")
     except Exception as e:
         logging.error(f"Error searching by file size: {e}")
@@ -672,15 +649,119 @@ def display_size_search_menu():
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
+
+async def list_all_chats_with_member_count():
+    try:
+        await client.start(phone=phone_number)
+        dialogs = await client.get_dialogs()
+
+        table = Table(title="All Chats/Channels/Groups")
+        table.add_column("Chat Name", justify="left")
+        table.add_column("Chat ID", justify="center")
+        table.add_column("Last Message ID", justify="center")
+        table.add_column("Type", justify="center")
+        table.add_column("Member Count", justify="center")
+
+        for dialog in dialogs:
+            chat_name = dialog.name if hasattr(dialog, "name") else "Unknown"
+            chat_id = dialog.id
+            last_message_id = dialog.message.id if hasattr(dialog, "message") else "N/A"
+            chat_type = "Channel" if dialog.is_channel else "Group" if dialog.is_group else "Private Chat"
+            member_count = "N/A"
+            if dialog.is_group or dialog.is_channel:
+                try:
+                    participants = await client.get_participants(dialog.entity)
+                    member_count = len(participants)
+                except Exception as e:
+                    if dialog.is_channel and hasattr(dialog.entity, "participants_count"):
+                        member_count = dialog.entity.participants_count
+                    else:
+                        logging.error(f"Error getting member count for chat {chat_id}: {e}")
+                        console.print(f"[yellow]No permission to get member count for {chat_name}.[/yellow]")
+                        member_count = "No Permission"
+
+            table.add_row(
+                chat_name,
+                str(chat_id),
+                str(last_message_id),
+                chat_type,
+                str(member_count)
+            )
+
+        console.print(table)
+    except Exception as e:
+        logging.error(f"Error listing chats: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+
+async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=None):
+    await client.start(phone=phone_number)
+    downloaded_files = get_downloaded_files()
+    semaphore = asyncio.Semaphore(20)
+    success_count = 0
+    try:
+        chat_entity = await client.get_entity(chat_id)
+        messages = [
+            message async for message in client.iter_messages(chat_entity)
+            if message.media and (
+                (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
+                (media_type == "video" and isinstance(message.media, types.MessageMediaDocument) and
+                 any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes)) or
+                (media_type == "document" and isinstance(message.media, types.MessageMediaDocument) and
+                 not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
+            )
+        ]
+
+        if start_date and end_date:
+            start_date_obj = datetime.strptime(start_date, "%d/%m/%Y")
+            end_date_obj = datetime.strptime(end_date, "%d/%m/%Y")
+            messages = [
+                message for message in messages
+                if start_date_obj <= message.date.replace(tzinfo=None) <= end_date_obj
+            ]
+
+        total_files = len(messages)
+        if total_files == 0:
+            console.print(f"[yellow]No {media_type}s found to download.[/yellow]")
+            return
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            overall_task = progress.add_task(f"[green]Downloading {total_files} {media_type}s...", total=total_files)
+            file_tasks = {}
+            for message in messages:
+                file_name = message.file.name or f"{media_type}_{message.id}"
+                file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
+
+            for message in messages:
+                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
+                if file_name:
+                    success_count += 1
+                    progress.update(overall_task, advance=1)
+
+        console.print(f"[green]Downloaded {success_count} {media_type}s out of {total_files}.[/green]")
+    except Exception as e:
+        logging.error(f"Error downloading {media_type}s: {e}")
+        console.print(f"[red]Error downloading {media_type}s: {e}[/red]")
+
 async def main():
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3"])
-        if choice in [1, 2]:
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+        if choice in [1, 2, 3]:
             if choice == 1:
                 channel_input = Prompt.ask("Enter the channel name")
-            else:
+            elif choice == 2:
                 channel_input = Prompt.ask("Enter the invite link")
+            elif choice == 3:
+                chat_id_input = IntPrompt.ask("Enter the Chat ID")
+                channel_input = chat_id_input
+
             while True:
                 display_file_type_menu(channel_input)
                 file_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
@@ -819,7 +900,9 @@ async def main():
                 elif file_choice == 7:
                     console.print("[bold]Exiting the program.[/bold]")
                     return
-        elif choice == 3:
+        elif choice == 4:
+            await list_all_chats_with_member_count()
+        elif choice == 5:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
