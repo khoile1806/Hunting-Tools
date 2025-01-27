@@ -1,5 +1,6 @@
 import os
 import shutil
+import json
 import asyncio
 import logging
 from rich.text import Text
@@ -14,10 +15,6 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, 
 
 # https://my.telegram.org/auth
 
-api_id = ''
-api_hash = ''
-phone_number = ''
-
 main_folder = 'telegram_downloads'
 os.makedirs(main_folder, exist_ok=True)
 
@@ -28,6 +25,7 @@ file_folder = os.path.join(output_folder, 'files')
 status_file = os.path.join(main_folder, 'download_status.txt')
 log_file = os.path.join(main_folder, 'download_log.txt')
 session_file = os.path.join(main_folder, 'session_name.session')
+config_file = os.path.join(main_folder, 'config.json')
 
 os.makedirs(video_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)
@@ -36,7 +34,88 @@ os.makedirs(file_folder, exist_ok=True)
 logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(message)s')
 console = Console()
 
+def load_config():
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as file:
+            content = file.read().strip()
+            if content:
+                return json.loads(content)
+    return {}
+
+def save_config(api_id, api_hash, phone_number):
+    with open(config_file, 'w') as file:
+        json.dump({"api_id": api_id, "api_hash": api_hash, "phone_number": phone_number}, file)
+
+def get_api_config():
+    config = load_config()
+    if not config.get("api_id") or not config.get("api_hash") or not config.get("phone_number"):
+
+        console.print("[bold blue]Please provide your Telegram API credentials.[/bold blue]")
+        console.print("[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+        console.print("[yellow]Steps to follow:[/yellow]")
+        console.print("  1. Log in with your Telegram account.")
+        console.print("  2. Go to the 'API Development Tools' section.")
+        console.print("  3. Create a new app to get your API ID and API Hash.")
+        console.print("  4. Use the phone number associated with your Telegram account.")
+
+        api_id = Prompt.ask("Enter your API ID")
+        api_hash = Prompt.ask("Enter your API Hash")
+        phone_number = Prompt.ask("Enter your Phone Number")
+        save_config(api_id, api_hash, phone_number)
+        return api_id, api_hash, phone_number
+    return config["api_id"], config["api_hash"], config["phone_number"]
+
+api_id, api_hash, phone_number = get_api_config()
 client = TelegramClient(session_file, api_id, api_hash)
+
+def manage_api_config():
+    while True:
+        console.print(Panel.fit(
+            Text("API Management Menu", style="bold blue"),
+            border_style="green"
+        ))
+        console.print("[1] Show API credentials")
+        console.print("[2] Delete API credentials")
+        console.print("[3] Update API credentials")
+        console.print("[4] Back to main menu")
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4"])
+
+        if choice == 1:
+            show_api_credentials()
+        elif choice == 2:
+            delete_api_credentials()
+        elif choice == 3:
+            update_api_credentials()
+        elif choice == 4:
+            break
+        else:
+            console.print("[red]Invalid choice. Please try again.[/red]")
+
+def show_api_credentials():
+    config = load_config()
+    if config:
+        console.print("[bold yellow]Current API Credentials:[/bold yellow]")
+        console.print(f"API ID: {config.get('api_id', 'Not set')}")
+        console.print(f"API Hash: {config.get('api_hash', 'Not set')}")
+        console.print(f"Phone Number: {config.get('phone_number', 'Not set')}")
+    else:
+        console.print("[red]No API credentials found.[/red]")
+
+def delete_api_credentials():
+    if os.path.exists(config_file):
+        os.remove(config_file)
+        console.print("[green]API credentials deleted successfully.[/green]")
+    else:
+        console.print("[red]No API credentials to delete.[/red]")
+
+def update_api_credentials():
+    console.print("[bold blue]Update your Telegram API credentials.[/bold blue]")
+    console.print("[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+    api_id = Prompt.ask("Enter your new API ID")
+    api_hash = Prompt.ask("Enter your new API Hash")
+    phone_number = Prompt.ask("Enter your new Phone Number")
+    save_config(api_id, api_hash, phone_number)
+    console.print("[green]API credentials updated successfully.[/green]")
 
 def format_size(size_in_bytes):
     if size_in_bytes < 1024:
@@ -222,7 +301,8 @@ def display_main_menu():
         ("2", "Download by invite link"),
         ("3", "Download by Chat ID"),
         ("4", "List all chats/channels/groups"),
-        ("5", "Exit")
+        ("5", "Manage API Configuration"),
+        ("6", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -277,6 +357,7 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
                             timeline[message_date]["videos"] += 1
                         else:
                             timeline[message_date]["files"] += 1
+
         return timeline, channel.title if hasattr(channel, "title") else "Unknown"
     except Exception as e:
         logging.error(f"Error fetching timeline overview: {e}")
@@ -649,12 +730,10 @@ def display_size_search_menu():
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
-
 async def list_all_chats_with_member_count():
     try:
         await client.start(phone=phone_number)
         dialogs = await client.get_dialogs()
-
         table = Table(title="All Chats/Channels/Groups")
         table.add_column("Chat Name", justify="left")
         table.add_column("Chat ID", justify="center")
@@ -752,8 +831,17 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
 async def main():
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
         if choice in [1, 2, 3]:
+            # Lấy thông tin API từ profile đang hoạt động
+            api_id, api_hash, phone_number = get_api_config()
+            if not api_id or not api_hash or not phone_number:
+                console.print("[red]No active API profile found. Please configure an API profile first.[/red]")
+                continue
+
+            # Khởi tạo client Telegram với thông tin API từ profile đang hoạt động
+            client = TelegramClient(session_file, api_id, api_hash)
+
             if choice == 1:
                 channel_input = Prompt.ask("Enter the channel name")
             elif choice == 2:
@@ -903,6 +991,8 @@ async def main():
         elif choice == 4:
             await list_all_chats_with_member_count()
         elif choice == 5:
+            manage_api_config()
+        elif choice == 6:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
