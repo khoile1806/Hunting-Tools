@@ -14,7 +14,6 @@ start_time = time.time()
 def save_func(final_urls, outfile, domain):
     filename = os.path.join('output', f'{outfile if outfile else domain}.txt')
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-
     with open(filename, "w", encoding="utf-8") as f:
         for url in final_urls:
             f.write(url + "\n")
