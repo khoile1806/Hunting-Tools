@@ -740,7 +740,6 @@ async def list_all_chats_with_member_count():
         table.add_column("Last Message ID", justify="center")
         table.add_column("Type", justify="center")
         table.add_column("Member Count", justify="center")
-
         for dialog in dialogs:
             chat_name = dialog.name if hasattr(dialog, "name") else "Unknown"
             chat_id = dialog.id
@@ -789,7 +788,6 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
                  not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
             )
         ]
-
         if start_date and end_date:
             start_date_obj = datetime.strptime(start_date, "%d/%m/%Y")
             end_date_obj = datetime.strptime(end_date, "%d/%m/%Y")
@@ -816,7 +814,6 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
             for message in messages:
                 file_name = message.file.name or f"{media_type}_{message.id}"
                 file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
-
             for message in messages:
                 file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
                 if file_name:
@@ -839,7 +836,6 @@ async def main():
                 console.print("[red]No active API profile found. Please configure an API profile first.[/red]")
                 continue
 
-            # Khởi tạo client Telegram với thông tin API từ profile đang hoạt động
             client = TelegramClient(session_file, api_id, api_hash)
 
             if choice == 1:
@@ -873,7 +869,6 @@ async def main():
                                 "Download by Date Range Options:\n1. Video\n2. Image\n3. File\nEnter your choice", choices=["1", "2", "3"])
                             start_date = Prompt.ask("Enter the start date (DD/MM/YYYY)")
                             end_date = Prompt.ask("Enter the end date (DD/MM/YYYY)")
-
                             if media_type_choice == 1:
                                 await download_by_type(channel_input, "video", start_date, end_date)
                             elif media_type_choice == 2:
