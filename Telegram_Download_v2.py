@@ -14,9 +14,9 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, 
 
 # https://my.telegram.org/auth
 
-api_id = '26177712'
-api_hash = 'e386805d10d6318d27fe06fbe2056d49'
-phone_number = '+84398326272'
+api_id = ''
+api_hash = ''
+phone_number = ''
 
 main_folder = 'telegram_downloads'
 os.makedirs(main_folder, exist_ok=True)
