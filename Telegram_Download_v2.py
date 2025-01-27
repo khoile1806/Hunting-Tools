@@ -109,8 +109,14 @@ def delete_api_credentials():
         console.print("[red]No API credentials to delete.[/red]")
 
 def update_api_credentials():
-    console.print("[bold blue]Update your Telegram API credentials.[/bold blue]")
-    console.print("[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+    console.print("[bold blue]Please provide your Telegram API credentials.[/bold blue]")
+    console.print(
+        "[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+    console.print("[yellow]Steps to follow:[/yellow]")
+    console.print("  1. Log in with your Telegram account.")
+    console.print("  2. Go to the 'API Development Tools' section.")
+    console.print("  3. Create a new app to get your API ID and API Hash.")
+    console.print("  4. Use the phone number associated with your Telegram account.")
     api_id = Prompt.ask("Enter your new API ID")
     api_hash = Prompt.ask("Enter your new API Hash")
     phone_number = Prompt.ask("Enter your new Phone Number")
@@ -830,7 +836,6 @@ async def main():
         display_main_menu()
         choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
         if choice in [1, 2, 3]:
-            # Lấy thông tin API từ profile đang hoạt động
             api_id, api_hash, phone_number = get_api_config()
             if not api_id or not api_hash or not phone_number:
                 console.print("[red]No active API profile found. Please configure an API profile first.[/red]")
