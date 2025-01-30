@@ -1,5 +1,6 @@
 import os
 import shutil
+import json
 import asyncio
 import logging
 from rich.text import Text
@@ -14,10 +15,6 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, 
 
 # https://my.telegram.org/auth
 
-api_id = '26177712'
-api_hash = 'e386805d10d6318d27fe06fbe2056d49'
-phone_number = '+84398326272'
-
 main_folder = 'telegram_downloads'
 os.makedirs(main_folder, exist_ok=True)
 
@@ -28,6 +25,8 @@ file_folder = os.path.join(output_folder, 'files')
 status_file = os.path.join(main_folder, 'download_status.txt')
 log_file = os.path.join(main_folder, 'download_log.txt')
 session_file = os.path.join(main_folder, 'session_name.session')
+config_file = os.path.join(main_folder, 'config.json')
+accounts_file = os.path.join(main_folder, 'accounts.json')
 
 os.makedirs(video_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)
@@ -36,7 +35,205 @@ os.makedirs(file_folder, exist_ok=True)
 logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(message)s')
 console = Console()
 
+accounts = []
+current_account_index = 0
+
+def add_account(api_id, api_hash, phone_number):
+    session_file = os.path.join(main_folder, f"session_{phone_number}.session")
+    accounts.append({
+        "api_id": api_id,
+        "api_hash": api_hash,
+        "phone_number": phone_number,
+        "session_file": session_file
+    })
+    save_accounts()
+    console.print("[green]Account added successfully.[/green]")
+
+def save_accounts():
+    with open(accounts_file, 'w') as file:
+        json.dump(accounts, file, indent=4)
+
+def load_accounts():
+    if os.path.exists(accounts_file):
+        with open(accounts_file, 'r') as file:
+            return json.load(file)
+    return []
+
+def delete_account(account_index):
+    if 0 <= account_index < len(accounts):
+        deleted_account = accounts.pop(account_index)
+        if os.path.exists(deleted_account["session_file"]):
+            os.remove(deleted_account["session_file"])
+        save_accounts()
+        console.print("[green]Account deleted successfully.[/green]")
+    else:
+        console.print("[red]Invalid account index.[/red]")
+
+async def switch_account():
+    global current_account_index, client
+
+    if len(accounts) < 2:
+        console.print("[red]Not enough accounts to switch.[/red]")
+        return
+
+    if client.is_connected():
+        await client.disconnect()
+
+    current_account_index = (current_account_index + 1) % len(accounts)
+    account = accounts[current_account_index]
+
+    console.print(f"[yellow]Switching to account: {account['phone_number']}...[/yellow]")
+    session_path = os.path.join(main_folder, f"session_{account['phone_number']}.session")
+    if os.path.exists(session_path):
+        os.remove(session_path)
+        console.print(f"[red]Deleted old session file for {account['phone_number']}.[/red]")
+
+    client = TelegramClient(session_path, account["api_id"], account["api_hash"])
+
+    await client.start(account["phone_number"])
+    console.print(f"[green]Successfully switched to account: {account['phone_number']}[/green]")
+
+async def manage_accounts():
+    global accounts
+    accounts = load_accounts()
+    while True:
+        console.print(Panel.fit(
+            Text("Account Management Menu", style="bold blue"),
+            border_style="green"
+        ))
+        console.print("[1] Add new account")
+        console.print("[2] Switch account")
+        console.print("[3] List all accounts")
+        console.print("[4] Delete account")
+        console.print("[5] Back to main menu")
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+
+        if choice == 1:
+            api_id = Prompt.ask("Enter your API ID")
+            api_hash = Prompt.ask("Enter your API Hash")
+            phone_number = Prompt.ask("Enter your Phone Number")
+            add_account(api_id, api_hash, phone_number)
+        elif choice == 2:
+            if len(accounts) > 1:
+                await switch_account()
+            else:
+                console.print("[red]Not enough accounts to switch.[/red]")
+        elif choice == 3:
+            if accounts:
+                table = Table(title="Accounts List")
+                table.add_column("Index", justify="center")
+                table.add_column("Phone Number", justify="center")
+                table.add_column("API ID", justify="center")
+                table.add_column("API Hash", justify="center")
+                for idx, account in enumerate(accounts):
+                    table.add_row(
+                        str(idx + 1),
+                        account["phone_number"],
+                        account["api_id"],
+                        account["api_hash"]
+                    )
+                console.print(table)
+            else:
+                console.print("[red]No accounts found.[/red]")
+        elif choice == 4:
+            if accounts:
+                account_index = IntPrompt.ask("Enter the account index to delete", choices=[str(i + 1) for i in range(len(accounts))]) - 1
+                delete_account(account_index)
+            else:
+                console.print("[red]No accounts to delete.[/red]")
+        elif choice == 5:
+            break
+        else:
+            console.print("[red]Invalid choice. Please try again.[/red]")
+
+def load_config():
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as file:
+            content = file.read().strip()
+            if content:
+                return json.loads(content)
+    return {}
+
+def save_config(api_id, api_hash, phone_number):
+    with open(config_file, 'w') as file:
+        json.dump({"api_id": api_id, "api_hash": api_hash, "phone_number": phone_number}, file)
+
+def get_api_config():
+    config = load_config()
+    if not config.get("api_id") or not config.get("api_hash") or not config.get("phone_number"):
+
+        console.print("[bold blue]Please provide your Telegram API credentials.[/bold blue]")
+        console.print("[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+        console.print("[yellow]Steps to follow:[/yellow]")
+        console.print("  1. Log in with your Telegram account.")
+        console.print("  2. Go to the 'API Development Tools' section.")
+        console.print("  3. Create a new app to get your API ID and API Hash.")
+        console.print("  4. Use the phone number associated with your Telegram account.")
+
+        api_id = Prompt.ask("Enter your API ID")
+        api_hash = Prompt.ask("Enter your API Hash")
+        phone_number = Prompt.ask("Enter your Phone Number")
+        save_config(api_id, api_hash, phone_number)
+        return api_id, api_hash, phone_number
+    return config["api_id"], config["api_hash"], config["phone_number"]
+
+api_id, api_hash, phone_number = get_api_config()
 client = TelegramClient(session_file, api_id, api_hash)
+
+def manage_api_config():
+    while True:
+        console.print(Panel.fit(
+            Text("API Management Menu", style="bold blue"),
+            border_style="green"
+        ))
+        console.print("[1] Show API credentials")
+        console.print("[2] Delete API credentials")
+        console.print("[3] Update API credentials")
+        console.print("[4] Back to main menu")
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4"])
+
+        if choice == 1:
+            show_api_credentials()
+        elif choice == 2:
+            delete_api_credentials()
+        elif choice == 3:
+            update_api_credentials()
+        elif choice == 4:
+            break
+        else:
+            console.print("[red]Invalid choice. Please try again.[/red]")
+
+def show_api_credentials():
+    config = load_config()
+    if config:
+        console.print("[bold yellow]Current API Credentials:[/bold yellow]")
+        console.print(f"API ID: {config.get('api_id', 'Not set')}")
+        console.print(f"API Hash: {config.get('api_hash', 'Not set')}")
+        console.print(f"Phone Number: {config.get('phone_number', 'Not set')}")
+    else:
+        console.print("[red]No API credentials found.[/red]")
+
+def delete_api_credentials():
+    if os.path.exists(config_file):
+        os.remove(config_file)
+        console.print("[green]API credentials deleted successfully.[/green]")
+    else:
+        console.print("[red]No API credentials to delete.[/red]")
+
+def update_api_credentials():
+    console.print("[bold blue]Please provide your Telegram API credentials.[/bold blue]")
+    console.print(
+        "[yellow]You can obtain these credentials from the Telegram website:[/yellow] [underline]https://my.telegram.org/auth[/underline]")
+    console.print("[yellow]Steps to follow:[/yellow]")
+    console.print("  1. Log in with your Telegram account.")
+    console.print("  2. Go to the 'API Development Tools' section.")
+    console.print("  3. Create a new app to get your API ID and API Hash.")
+    console.print("  4. Use the phone number associated with your Telegram account.")
+    api_id = Prompt.ask("Enter your new API ID")
+    api_hash = Prompt.ask("Enter your new API Hash")
+    phone_number = Prompt.ask("Enter your new Phone Number")
+    save_config(api_id, api_hash, phone_number)
+    console.print("[green]API credentials updated successfully.[/green]")
 
 def format_size(size_in_bytes):
     if size_in_bytes < 1024:
@@ -121,41 +318,6 @@ def get_unique_filename(file_folder_path, file_name):
         counter += 1
     return file_name
 
-async def get_timeline_overview(channel_input, start_date=None, end_date=None):
-    try:
-        await client.start(phone=phone_number)
-        channel = await client.get_entity(channel_input)
-        timeline = {}
-
-        start_date_obj = datetime.strptime(start_date, "%d/%m/%Y") if start_date else None
-        end_date_obj = datetime.strptime(end_date, "%d/%m/%Y") if end_date else None
-
-        async for message in client.iter_messages(channel):
-            message_date = message.date
-            message_date_str = message_date.strftime("%d/%m/%Y")
-            if (not start_date_obj and not end_date_obj) or (
-                start_date_obj and end_date_obj and start_date_obj <= message_date <= end_date_obj
-            ) or (start_date_obj and not end_date_obj and message_date.strftime("%d/%m/%Y") == start_date):
-                if message.media:
-                    if message_date_str not in timeline:
-                        timeline[message_date_str] = {"videos": 0, "images": 0, "files": 0}
-
-                    if isinstance(message.media, types.MessageMediaPhoto):
-                        timeline[message_date_str]["images"] += 1
-                    elif isinstance(message.media, types.MessageMediaDocument):
-                        attributes = message.media.document.attributes
-                        if any(isinstance(attr, types.DocumentAttributeVideo) for attr in attributes):
-                            timeline[message_date_str]["videos"] += 1
-                        else:
-                            timeline[message_date_str]["files"] += 1
-
-        channel_name = channel.title if hasattr(channel, "title") else "Unknown"
-        return timeline, channel_name
-    except Exception as e:
-        logging.error(f"Error fetching timeline overview: {e}")
-        console.print(f"[red]Error: {e}[/red]")
-        return {}, None
-
 async def download_by_type(channel_input, media_type, start_date=None, end_date=None):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
@@ -222,7 +384,9 @@ def display_main_menu():
         ("2", "Download by invite link"),
         ("3", "Download by Chat ID"),
         ("4", "List all chats/channels/groups"),
-        ("5", "Exit")
+        ("5", "Manage API Configuration"),
+        ("6", "Manage Accounts"),
+        ("7", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -277,6 +441,7 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
                             timeline[message_date]["videos"] += 1
                         else:
                             timeline[message_date]["files"] += 1
+
         return timeline, channel.title if hasattr(channel, "title") else "Unknown"
     except Exception as e:
         logging.error(f"Error fetching timeline overview: {e}")
@@ -649,19 +814,16 @@ def display_size_search_menu():
 
     console.print(Panel(menu_table, title="Size Search Menu", border_style="blue"))
 
-
 async def list_all_chats_with_member_count():
     try:
         await client.start(phone=phone_number)
         dialogs = await client.get_dialogs()
-
         table = Table(title="All Chats/Channels/Groups")
         table.add_column("Chat Name", justify="left")
         table.add_column("Chat ID", justify="center")
         table.add_column("Last Message ID", justify="center")
         table.add_column("Type", justify="center")
         table.add_column("Member Count", justify="center")
-
         for dialog in dialogs:
             chat_name = dialog.name if hasattr(dialog, "name") else "Unknown"
             chat_id = dialog.id
@@ -710,7 +872,6 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
                  not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
             )
         ]
-
         if start_date and end_date:
             start_date_obj = datetime.strptime(start_date, "%d/%m/%Y")
             end_date_obj = datetime.strptime(end_date, "%d/%m/%Y")
@@ -737,7 +898,6 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
             for message in messages:
                 file_name = message.file.name or f"{media_type}_{message.id}"
                 file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
-
             for message in messages:
                 file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
                 if file_name:
@@ -750,10 +910,19 @@ async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=Non
         console.print(f"[red]Error downloading {media_type}s: {e}[/red]")
 
 async def main():
+    global accounts, client
+    accounts = load_accounts()
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
         if choice in [1, 2, 3]:
+            if not accounts:
+                console.print("[red]No accounts found. Please add an account first.[/red]")
+                continue
+
+            account = accounts[current_account_index]
+            client = TelegramClient(account["session_file"], account["api_id"], account["api_hash"])
+
             if choice == 1:
                 channel_input = Prompt.ask("Enter the channel name")
             elif choice == 2:
@@ -785,7 +954,6 @@ async def main():
                                 "Download by Date Range Options:\n1. Video\n2. Image\n3. File\nEnter your choice", choices=["1", "2", "3"])
                             start_date = Prompt.ask("Enter the start date (DD/MM/YYYY)")
                             end_date = Prompt.ask("Enter the end date (DD/MM/YYYY)")
-
                             if media_type_choice == 1:
                                 await download_by_type(channel_input, "video", start_date, end_date)
                             elif media_type_choice == 2:
@@ -808,7 +976,6 @@ async def main():
                 elif file_choice == 3:
                     timeline_choice = IntPrompt.ask(
                         "View Timeline Options:\n1. All Time\n2. Specific Date\n3. Date Range\nEnter your choice", choices=["1", "2", "3"])
-
                     if timeline_choice == 1:
                         console.print("[bold]Fetching timeline for all time...[/bold]")
                         timeline, channel_name = await get_timeline_overview(channel_input)
@@ -823,7 +990,6 @@ async def main():
                             console.print(table)
                         else:
                             console.print("[red]Unable to fetch timeline.[/red]")
-
                     elif timeline_choice == 2:
                         specific_date = Prompt.ask("Enter the date (DD/MM/YYYY)")
                         console.print(f"[bold]Fetching timeline for {specific_date}...[/bold]")
@@ -838,7 +1004,6 @@ async def main():
                             console.print(table)
                         else:
                             console.print("[red]Unable to fetch timeline.[/red]")
-
                     elif timeline_choice == 3:
                         start_date = Prompt.ask("Enter the start date (DD/MM/YYYY)")
                         end_date = Prompt.ask("Enter the end date (DD/MM/YYYY)")
@@ -858,7 +1023,6 @@ async def main():
                 elif file_choice == 4:
                     timeline_choice = IntPrompt.ask(
                         "View Detailed Timeline Options:\n1. All Time\n2. Specific Date\n3. Date Range\nEnter your choice", choices=["1", "2", "3"])
-
                     if timeline_choice == 1:
                         console.print("[bold]Fetching detailed timeline for all time...[/bold]")
                         detailed_timeline = await get_detailed_timeline(channel_input)
@@ -903,6 +1067,10 @@ async def main():
         elif choice == 4:
             await list_all_chats_with_member_count()
         elif choice == 5:
+            manage_api_config()
+        elif choice == 6:
+            await manage_accounts()
+        elif choice == 7:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
