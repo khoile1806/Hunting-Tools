@@ -66,11 +66,15 @@ def load_accounts():
             return json.load(file)
     return []
 
-def delete_account(account_index):
+async def delete_account(account_index):  # Thêm async
     if 0 <= account_index < len(accounts):
         deleted_account = accounts.pop(account_index)
+        global client
+        if client.is_connected():
+            await client.disconnect()
         if os.path.exists(deleted_account["session_file"]):
             os.remove(deleted_account["session_file"])
+            console.print(f"[green]Deleted session file: {deleted_account['session_file']}[/green]")
         save_accounts()
         console.print("[green]Account deleted successfully.[/green]")
     else:
@@ -78,7 +82,6 @@ def delete_account(account_index):
 
 async def switch_account():
     global current_account_index, client
-
     if len(accounts) < 2:
         console.print("[red]Not enough accounts to switch.[/red]")
         return
@@ -88,7 +91,6 @@ async def switch_account():
 
     current_account_index = (current_account_index + 1) % len(accounts)
     account = accounts[current_account_index]
-
     console.print(f"[yellow]Switching to account: {account['phone_number']}...[/yellow]")
     session_path = os.path.join(main_folder, f"session_{account['phone_number']}.session")
     if os.path.exists(session_path):
@@ -96,7 +98,6 @@ async def switch_account():
         console.print(f"[red]Deleted old session file for {account['phone_number']}.[/red]")
 
     client = TelegramClient(session_path, account["api_id"], account["api_hash"])
-
     await client.start(account["phone_number"])
     console.print(f"[green]Successfully switched to account: {account['phone_number']}[/green]")
 
@@ -116,15 +117,25 @@ async def manage_accounts():
         choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
 
         if choice == 1:
+            console.print("[bold blue]Please provide your Telegram account details.[/bold blue]")
+            console.print("[yellow]To use this program, you need to add a Telegram account.[/yellow]")
+            console.print("[yellow]Steps to follow:[/yellow]")
+            console.print("  1. Obtain your Telegram API credentials from [underline]https://my.telegram.org/auth[/underline].")
+            console.print("  2. Log in with your Telegram account and navigate to 'API Development Tools'.")
+            console.print("  3. Create a new app to get your API ID and API Hash.")
+            console.print("  4. Use the phone number associated with your Telegram account.")
+
             api_id = Prompt.ask("Enter your API ID")
             api_hash = Prompt.ask("Enter your API Hash")
             phone_number = Prompt.ask("Enter your Phone Number")
             add_account(api_id, api_hash, phone_number)
+
         elif choice == 2:
             if len(accounts) > 1:
                 await switch_account()
             else:
                 console.print("[red]Not enough accounts to switch.[/red]")
+
         elif choice == 3:
             if accounts:
                 table = Table(title="Accounts List")
@@ -142,12 +153,15 @@ async def manage_accounts():
                 console.print(table)
             else:
                 console.print("[red]No accounts found.[/red]")
+
         elif choice == 4:
             if accounts:
-                account_index = IntPrompt.ask("Enter the account index to delete", choices=[str(i + 1) for i in range(len(accounts))]) - 1
-                delete_account(account_index)
+                account_index = IntPrompt.ask("Enter the account index to delete",
+                                              choices=[str(i + 1) for i in range(len(accounts))]) - 1
+                await delete_account(account_index)
             else:
                 console.print("[red]No accounts to delete.[/red]")
+
         elif choice == 5:
             break
         else:
@@ -302,7 +316,6 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
         current_time = time.time()
         elapsed_time = current_time - last_time
         downloaded_since_last = current - last_downloaded
-
         if elapsed_time > 0:
             speed = downloaded_since_last / elapsed_time
             speed_str = format_size(speed) + "/s"
@@ -362,7 +375,6 @@ async def retry_failed_downloads():
     semaphore = asyncio.Semaphore(5)
     success_count = 0
     updated_failed_files = []
-
     with Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -481,7 +493,8 @@ def display_main_menu():
         ("4", "List all chats/channels/groups"),
         ("5", "Manage API Configuration"),
         ("6", "Manage Accounts"),
-        ("7", "Exit")
+        ("7", "Delete Session Files"),
+        ("8", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -491,6 +504,30 @@ def display_main_menu():
         )
 
     console.print(Panel(menu_table, title="Main Menu", border_style="blue"))
+
+def delete_all_session_files():
+    global client
+    current_session_file = client.session.filename if client and client.session else None
+    session_files = [
+        f for f in os.listdir(main_folder)
+        if f.startswith("session_") and f.endswith(".session")
+    ]
+    if not session_files:
+        console.print("[yellow]No session files found.[/yellow]")
+        return
+
+    deleted_count = 0
+    for file in session_files:
+        file_path = os.path.join(main_folder, file)
+        if file_path != current_session_file:
+            try:
+                os.remove(file_path)
+                console.print(f"[red]Deleted: {file}[/red]")
+                deleted_count += 1
+            except PermissionError:
+                console.print(f"[yellow]Could not delete {file}. It might be in use.[/yellow]")
+
+    console.print(f"[green]Successfully deleted {deleted_count} session files (excluding the active session).[/green]")
 
 async def get_channel_info(channel_input):
     try:
@@ -550,7 +587,6 @@ async def get_detailed_timeline(channel_input, start_date=None, end_date=None):
         detailed_timeline = []
         async for message in client.iter_messages(channel):
             message_date = message.date.strftime("%d/%m/%Y")
-
             if (not start_date and not end_date) or (start_date and end_date and start_date <= message_date <= end_date) or (start_date and not end_date and message_date == start_date):
                 if message.media:
                     file_info = {
@@ -1010,7 +1046,7 @@ async def main():
     accounts = load_accounts()
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
         if choice in [1, 2, 3]:
             if not accounts:
                 console.print("[red]No accounts found. Please add an account first.[/red]")
@@ -1169,6 +1205,8 @@ async def main():
         elif choice == 6:
             await manage_accounts()
         elif choice == 7:
+            delete_all_session_files()
+        elif choice == 8:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
