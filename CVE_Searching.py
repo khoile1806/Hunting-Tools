@@ -84,5 +84,4 @@ if __name__ == "__main__":
                         help="Filter CVEs by severity (e.g., critical, high, medium, low)")
     parser.add_argument("--sort", type=str, choices=["newest", "oldest"], help="Sort results by 'newest' or 'oldest'")
     args = parser.parse_args()
-
     search_cve_improved(args.keyword, args.output, args.year, args.severity, args.sort)
