@@ -9,8 +9,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 )
 
-TELEGRAM_TOKEN = '7171385980:AAHts1yco75v-q3mvha4H4n6QZrUmffPGV4'
-CHAT_ID = '6229763712'
+TELEGRAM_TOKEN = ''
+CHAT_ID = ''
 RSS_URL = 'https://feeds.feedburner.com/TheHackersNews'
 
 sent_articles = set()
