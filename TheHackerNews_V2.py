@@ -1,7 +1,8 @@
-import feedparser
 import logging
-from telegram import Bot
 import asyncio
+import feedparser
+from telegram import Bot
+from deep_translator import GoogleTranslator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,13 +33,29 @@ async def fetch_rss():
             sent_articles.add(entry.link)
     return articles
 
-async def send_message_via_telegram(bot, message):
+async def translate_text(text, dest_language="vi"):
     try:
-        logging.info(f"Sending message to Telegram: {message}")
-        await bot.send_message(chat_id=CHAT_ID, text=message)
+        translated = GoogleTranslator(source="auto", target=dest_language).translate(text)
+        return translated
+    except Exception as e:
+        logging.error(f"Translation error: {e}")
+        return text
+
+async def send_message_via_telegram(bot, article):
+    translated_summary = await translate_text(article["summary"])
+    message = (
+        f"• *Title:* {article['title']}\n"
+        f"• *Published:* {article['published']}\n"
+        f"• *Summary (VN):* {translated_summary}\n"
+        f"• *Link:* {article['link']}"
+    )
+    try:
+        logging.info(f"Sending message to Telegram")
+        await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
         logging.info("Message sent successfully")
     except Exception as e:
         logging.error(f"Failed to send message: {e}")
+
 
 async def main():
     async with Bot(token=TELEGRAM_TOKEN) as bot:
@@ -46,13 +63,7 @@ async def main():
             articles = await fetch_rss()
             if articles:
                 for article in articles:
-                    message = (
-                        f"• Title: {article['title']}\n"
-                        f"• Published: {article['published']}\n"
-                        f"• Summary: {article['summary']}\n"
-                        f"• Link: {article['link']}"
-                    )
-                    await send_message_via_telegram(bot, message)
+                    await send_message_via_telegram(bot, article)
             else:
                 logging.info("No new articles found")
             logging.info("Sleeping for 10 minutes")

@@ -1,7 +1,6 @@
 import os
-import time
-import json
 import shutil
+import json
 import asyncio
 import logging
 from rich.text import Text
@@ -28,18 +27,12 @@ log_file = os.path.join(main_folder, 'download_log.txt')
 session_file = os.path.join(main_folder, 'session_name.session')
 config_file = os.path.join(main_folder, 'config.json')
 accounts_file = os.path.join(main_folder, 'accounts.json')
-failed_downloads_file = os.path.join(main_folder, 'failed_downloads.txt')
 
 os.makedirs(video_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)
 os.makedirs(file_folder, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(log_file, encoding="utf-8")]
-)
-logging.info("Application started.")
+logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(message)s')
 console = Console()
 
 accounts = []
@@ -66,15 +59,11 @@ def load_accounts():
             return json.load(file)
     return []
 
-async def delete_account(account_index):  # Thêm async
+def delete_account(account_index):
     if 0 <= account_index < len(accounts):
         deleted_account = accounts.pop(account_index)
-        global client
-        if client.is_connected():
-            await client.disconnect()
         if os.path.exists(deleted_account["session_file"]):
             os.remove(deleted_account["session_file"])
-            console.print(f"[green]Deleted session file: {deleted_account['session_file']}[/green]")
         save_accounts()
         console.print("[green]Account deleted successfully.[/green]")
     else:
@@ -82,6 +71,7 @@ async def delete_account(account_index):  # Thêm async
 
 async def switch_account():
     global current_account_index, client
+
     if len(accounts) < 2:
         console.print("[red]Not enough accounts to switch.[/red]")
         return
@@ -91,6 +81,7 @@ async def switch_account():
 
     current_account_index = (current_account_index + 1) % len(accounts)
     account = accounts[current_account_index]
+
     console.print(f"[yellow]Switching to account: {account['phone_number']}...[/yellow]")
     session_path = os.path.join(main_folder, f"session_{account['phone_number']}.session")
     if os.path.exists(session_path):
@@ -98,6 +89,7 @@ async def switch_account():
         console.print(f"[red]Deleted old session file for {account['phone_number']}.[/red]")
 
     client = TelegramClient(session_path, account["api_id"], account["api_hash"])
+
     await client.start(account["phone_number"])
     console.print(f"[green]Successfully switched to account: {account['phone_number']}[/green]")
 
@@ -117,25 +109,15 @@ async def manage_accounts():
         choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"])
 
         if choice == 1:
-            console.print("[bold blue]Please provide your Telegram account details.[/bold blue]")
-            console.print("[yellow]To use this program, you need to add a Telegram account.[/yellow]")
-            console.print("[yellow]Steps to follow:[/yellow]")
-            console.print("  1. Obtain your Telegram API credentials from [underline]https://my.telegram.org/auth[/underline].")
-            console.print("  2. Log in with your Telegram account and navigate to 'API Development Tools'.")
-            console.print("  3. Create a new app to get your API ID and API Hash.")
-            console.print("  4. Use the phone number associated with your Telegram account.")
-
             api_id = Prompt.ask("Enter your API ID")
             api_hash = Prompt.ask("Enter your API Hash")
             phone_number = Prompt.ask("Enter your Phone Number")
             add_account(api_id, api_hash, phone_number)
-
         elif choice == 2:
             if len(accounts) > 1:
                 await switch_account()
             else:
                 console.print("[red]Not enough accounts to switch.[/red]")
-
         elif choice == 3:
             if accounts:
                 table = Table(title="Accounts List")
@@ -153,15 +135,12 @@ async def manage_accounts():
                 console.print(table)
             else:
                 console.print("[red]No accounts found.[/red]")
-
         elif choice == 4:
             if accounts:
-                account_index = IntPrompt.ask("Enter the account index to delete",
-                                              choices=[str(i + 1) for i in range(len(accounts))]) - 1
-                await delete_account(account_index)
+                account_index = IntPrompt.ask("Enter the account index to delete", choices=[str(i + 1) for i in range(len(accounts))]) - 1
+                delete_account(account_index)
             else:
                 console.print("[red]No accounts to delete.[/red]")
-
         elif choice == 5:
             break
         else:
@@ -199,7 +178,7 @@ def get_api_config():
     return config["api_id"], config["api_hash"], config["phone_number"]
 
 api_id, api_hash, phone_number = get_api_config()
-client = TelegramClient(session_file, api_id, api_hash, connection_retries=5, timeout=10)
+client = TelegramClient(session_file, api_id, api_hash)
 
 def manage_api_config():
     while True:
@@ -283,17 +262,15 @@ def save_downloaded_file(file_name):
     with open(status_file, 'a') as f:
         f.write(file_name + '\n')
 
-async def download_media(message, downloaded_files, semaphore, media_type, progress, task_id, channel_input, retries=3):
+async def download_media(message, downloaded_files, semaphore, media_type, progress, task_id, retries=3):
     if media_type == "video" and isinstance(message.media, types.MessageMediaDocument):
         file_name = message.file.name or f"Video_{message.id}.mp4"
         file_folder_path = video_folder
         duration = get_video_duration(message.media.document.attributes) if message.media.document else "Unknown duration"
-
     elif media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto):
         file_name = message.file.name or f"Image_{message.id}.jpg"
         file_folder_path = image_folder
         duration = None
-
     elif media_type == "document" and isinstance(message.media, types.MessageMediaDocument):
         file_name = message.file.name or f"File_{message.id}"
         file_folder_path = file_folder
@@ -305,31 +282,10 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
     file_size = message.file.size if message.file else 0
     file_size_str = format_size(file_size)
     temp_file_path = os.path.join(file_folder_path, f"tmp_{file_name}")
-    final_path = os.path.join(file_folder_path, file_name)
-    console.print(f"[green]Starting download: {file_name} | Size: {file_size_str}[/green]")
-    start_time = time.time()
-    last_time = start_time
-    last_downloaded = 0
+    console.print(f"[green]Starting download: {file_name} | Size: {file_size_str} | {'Duration: ' + duration if duration else ''}[/green]")
 
     def progress_callback(current, total):
-        nonlocal last_time, last_downloaded
-        current_time = time.time()
-        elapsed_time = current_time - last_time
-        downloaded_since_last = current - last_downloaded
-        if elapsed_time > 0:
-            speed = downloaded_since_last / elapsed_time
-            speed_str = format_size(speed) + "/s"
-
-        else:
-            speed_str = "Calculating..."
-
-        last_time = current_time
-        last_downloaded = current
-        progress.update(
-            task_id,
-            completed=current,
-            description=f"[cyan]Downloading {file_name} ({format_size(current)}/{file_size_str}) at {speed_str}...[/cyan]",
-        )
+        progress.update(task_id, completed=current, description=f"[cyan]Downloading {file_name} ({format_size(current)}/{file_size_str})...[/cyan]")
 
     for attempt in range(retries):
         try:
@@ -339,82 +295,20 @@ async def download_media(message, downloaded_files, semaphore, media_type, progr
                     file=temp_file_path,
                     progress_callback=progress_callback
                 )
+            final_path = os.path.join(file_folder_path, file_name)
             shutil.move(temp_file_path, final_path)
             save_downloaded_file(file_name)
             console.print(f"[green]Download complete: {final_path}[/green]")
             logging.info(f"{media_type.capitalize()} downloaded successfully: {final_path}")
             return file_name
-
         except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed: Error downloading {file_name}: {e}")
+            logging.error(f"Attempt {attempt + 1} failed: Error downloading {media_type} {file_name}: {e}")
             console.print(f"[red]Attempt {attempt + 1} failed: Error downloading {file_name}.[/red]")
-
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
-
             if attempt == retries - 1:
-                console.print(f"[red]Failed to download {file_name} after {retries} attempts. Adding to retry list.[/red]")
-                with open(failed_downloads_file, 'a') as f:
-                    f.write(f"{message.id},{media_type},{channel_input}\n")
+                console.print(f"[red]Failed to download {file_name} after {retries} attempts.[/red]")
                 return None
-
-async def retry_failed_downloads():
-    if not os.path.exists(failed_downloads_file):
-        console.print("[yellow]No failed downloads found.[/yellow]")
-        return
-
-    failed_files = []
-    with open(failed_downloads_file, 'r') as f:
-        failed_files = [line.strip().split(",") for line in f.readlines()]
-
-    if not failed_files:
-        console.print("[yellow]No failed downloads found.[/yellow]")
-        return
-
-    console.print(f"[cyan]Retrying {len(failed_files)} failed downloads...[/cyan]")
-    semaphore = asyncio.Semaphore(5)
-    success_count = 0
-    updated_failed_files = []
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeRemainingColumn(),
-        console=console
-    ) as progress:
-        overall_task = progress.add_task("[green]Retrying failed downloads...", total=len(failed_files))
-        for message_id, media_type, channel_input in failed_files:
-            try:
-                await client.start(phone=phone_number)
-                channel = await client.get_entity(channel_input)
-                message = await client.get_messages(channel, ids=int(message_id))
-                if not message.media:
-                    console.print(f"[red]Message {message_id} does not contain media. Skipping.[/red]")
-                    continue
-
-                task_id = progress.add_task(f"[cyan]Retrying {media_type} {message_id}...", total=message.file.size if message.file else 0)
-                file_name = await download_media(message, get_downloaded_files(), semaphore, media_type, progress, task_id, channel_input)
-
-                if file_name:
-                    success_count += 1
-
-                else:
-                    updated_failed_files.append(f"{message_id},{media_type},{channel_input}")
-                progress.update(overall_task, advance=1)
-
-            except Exception as e:
-                console.print(f"[red]Error retrying {message_id}: {e}[/red]")
-                updated_failed_files.append(f"{message_id},{media_type},{channel_input}")
-
-    if updated_failed_files:
-        with open(failed_downloads_file, 'w') as f:
-            f.write("\n".join(updated_failed_files))
-
-    else:
-        os.remove(failed_downloads_file)
-
-    console.print(f"[green]Successfully retried {success_count} downloads.[/green]")
 
 def get_unique_filename(file_folder_path, file_name):
     base_name, extension = os.path.splitext(file_name)
@@ -427,7 +321,7 @@ def get_unique_filename(file_folder_path, file_name):
 async def download_by_type(channel_input, media_type, start_date=None, end_date=None):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
-    semaphore = asyncio.Semaphore(15)
+    semaphore = asyncio.Semaphore(20)
     success_count = 0
     try:
         messages = [
@@ -435,7 +329,7 @@ async def download_by_type(channel_input, media_type, start_date=None, end_date=
             if message.media and (
                 (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
                 (media_type == "video" and isinstance(message.media, types.MessageMediaDocument) and
-                any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes)) or
+                 any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes)) or
                 (media_type == "document" and isinstance(message.media, types.MessageMediaDocument) and
                  not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
             )
@@ -468,8 +362,7 @@ async def download_by_type(channel_input, media_type, start_date=None, end_date=
                 file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
 
             for message in messages:
-                task_id = file_tasks[message.id]
-                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, task_id, channel_input)
+                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
                 if file_name:
                     success_count += 1
                     progress.update(overall_task, advance=1)
@@ -493,8 +386,7 @@ def display_main_menu():
         ("4", "List all chats/channels/groups"),
         ("5", "Manage API Configuration"),
         ("6", "Manage Accounts"),
-        ("7", "Delete Session Files"),
-        ("8", "Exit")
+        ("7", "Exit")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -504,30 +396,6 @@ def display_main_menu():
         )
 
     console.print(Panel(menu_table, title="Main Menu", border_style="blue"))
-
-def delete_all_session_files():
-    global client
-    current_session_file = client.session.filename if client and client.session else None
-    session_files = [
-        f for f in os.listdir(main_folder)
-        if f.startswith("session_") and f.endswith(".session")
-    ]
-    if not session_files:
-        console.print("[yellow]No session files found.[/yellow]")
-        return
-
-    deleted_count = 0
-    for file in session_files:
-        file_path = os.path.join(main_folder, file)
-        if file_path != current_session_file:
-            try:
-                os.remove(file_path)
-                console.print(f"[red]Deleted: {file}[/red]")
-                deleted_count += 1
-            except PermissionError:
-                console.print(f"[yellow]Could not delete {file}. It might be in use.[/yellow]")
-
-    console.print(f"[green]Successfully deleted {deleted_count} session files (excluding the active session).[/green]")
 
 async def get_channel_info(channel_input):
     try:
@@ -587,6 +455,7 @@ async def get_detailed_timeline(channel_input, start_date=None, end_date=None):
         detailed_timeline = []
         async for message in client.iter_messages(channel):
             message_date = message.date.strftime("%d/%m/%Y")
+
             if (not start_date and not end_date) or (start_date and end_date and start_date <= message_date <= end_date) or (start_date and not end_date and message_date == start_date):
                 if message.media:
                     file_info = {
@@ -639,7 +508,7 @@ async def download_by_name(channel_input, file_name):
     try:
         await client.start(phone=phone_number)
         downloaded_files = get_downloaded_files()
-        semaphore = asyncio.Semaphore(50)
+        semaphore = asyncio.Semaphore(10)
         matching_messages = []
         async for message in client.iter_messages(channel_input):
             if message.media:
@@ -756,7 +625,7 @@ async def download_by_name(channel_input, file_name):
                     media_type = "file"
 
                 task_id = progress.add_task(f"[cyan]Downloading {current_file_name} ({file_size_str})...", total=file_size)
-                await download_media(message, downloaded_files, semaphore, media_type, progress, task_id, channel_input)
+                await download_media(message, downloaded_files, semaphore, media_type, progress, task_id)
                 progress.update(overall_task, advance=file_size)
 
         console.print(f"[green]Download completed.[/green]")
@@ -824,8 +693,7 @@ def display_download_menu():
         ("3", "Download All File"),
         ("4", "Download by Name"),
         ("5", "Download by Date Range"),
-        ("6", "Retry Failed Downloads"),
-        ("7", "Back to Previous Menu")
+        ("6", "Back to Previous Menu")
     ]
     menu_table = Table(show_header=False, box=None, padding=(0, 2))
     for option, description in menu_options:
@@ -987,10 +855,10 @@ async def list_all_chats_with_member_count():
         logging.error(f"Error listing chats: {e}")
         console.print(f"[red]Error: {e}[/red]")
 
-async def download_by_chat_id(chat_id, media_type, channel_input, start_date=None, end_date=None):
+async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=None):
     await client.start(phone=phone_number)
     downloaded_files = get_downloaded_files()
-    semaphore = asyncio.Semaphore(15)
+    semaphore = asyncio.Semaphore(20)
     success_count = 0
     try:
         chat_entity = await client.get_entity(chat_id)
@@ -1031,7 +899,7 @@ async def download_by_chat_id(chat_id, media_type, channel_input, start_date=Non
                 file_name = message.file.name or f"{media_type}_{message.id}"
                 file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
             for message in messages:
-                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id], channel_input)
+                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
                 if file_name:
                     success_count += 1
                     progress.update(overall_task, advance=1)
@@ -1046,7 +914,7 @@ async def main():
     accounts = load_accounts()
     while True:
         display_main_menu()
-        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
+        choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
         if choice in [1, 2, 3]:
             if not accounts:
                 console.print("[red]No accounts found. Please add an account first.[/red]")
@@ -1069,8 +937,8 @@ async def main():
                 if file_choice == 1:
                     while True:
                         display_download_menu()
-                        download_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6", "7"])
-                        if download_choice == 7:
+                        download_choice = IntPrompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5", "6"])
+                        if download_choice == 6:
                             break
                         elif download_choice == 1:
                             await download_by_type(channel_input, "video")
@@ -1092,8 +960,6 @@ async def main():
                                 await download_by_type(channel_input, "photo", start_date, end_date)
                             elif media_type_choice == 3:
                                 await download_by_type(channel_input, "document", start_date, end_date)
-                        elif download_choice == 6:
-                            await retry_failed_downloads()
                 elif file_choice == 2:
                     console.print("[bold]Fetching channel information...[/bold]")
                     video_count, image_count, file_count, channel_name = await get_channel_info(channel_input)
@@ -1205,8 +1071,6 @@ async def main():
         elif choice == 6:
             await manage_accounts()
         elif choice == 7:
-            delete_all_session_files()
-        elif choice == 8:
             console.print("[bold]Exiting the program.[/bold]")
             break
         else:
