@@ -90,7 +90,11 @@ async def switch_account():
 
     client = TelegramClient(session_path, account["api_id"], account["api_hash"])
 
-    await client.start(account["phone_number"])
+    if not client.is_connected():
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.start(account["phone_number"])
+
     console.print(f"[green]Successfully switched to account: {account['phone_number']}[/green]")
 
 async def manage_accounts():
@@ -318,8 +322,13 @@ def get_unique_filename(file_folder_path, file_name):
         counter += 1
     return file_name
 
+
 async def download_by_type(channel_input, media_type, start_date=None, end_date=None):
-    await client.start(phone=phone_number)
+    if not client.is_connected():
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.start(phone=phone_number)
+
     downloaded_files = get_downloaded_files()
     semaphore = asyncio.Semaphore(20)
     success_count = 0
@@ -327,11 +336,13 @@ async def download_by_type(channel_input, media_type, start_date=None, end_date=
         messages = [
             message async for message in client.iter_messages(channel_input)
             if message.media and (
-                (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
-                (media_type == "video" and isinstance(message.media, types.MessageMediaDocument) and
-                 any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes)) or
-                (media_type == "document" and isinstance(message.media, types.MessageMediaDocument) and
-                 not any(isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
+                    (media_type == "photo" and isinstance(message.media, types.MessageMediaPhoto)) or
+                    (media_type == "video" and isinstance(message.media, types.MessageMediaDocument) and
+                     any(isinstance(attr, types.DocumentAttributeVideo) for attr in
+                         message.media.document.attributes)) or
+                    (media_type == "document" and isinstance(message.media, types.MessageMediaDocument) and
+                     not any(
+                         isinstance(attr, types.DocumentAttributeVideo) for attr in message.media.document.attributes))
             )
         ]
         if start_date and end_date:
@@ -348,12 +359,12 @@ async def download_by_type(channel_input, media_type, start_date=None, end_date=
             return
 
         with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=console
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                console=console
         ) as progress:
             overall_task = progress.add_task(f"[green]Downloading {total_files} {media_type}s...", total=total_files)
             file_tasks = {}
@@ -362,15 +373,21 @@ async def download_by_type(channel_input, media_type, start_date=None, end_date=
                 file_tasks[message.id] = progress.add_task(f"[cyan]{file_name}", total=message.file.size)
 
             for message in messages:
-                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress, file_tasks[message.id])
+                file_name = await download_media(message, downloaded_files, semaphore, media_type, progress,
+                                                 file_tasks[message.id])
                 if file_name:
                     success_count += 1
                     progress.update(overall_task, advance=1)
 
         console.print(f"[green]Downloaded {success_count} {media_type}s out of {total_files}.[/green]")
+
     except Exception as e:
         logging.error(f"Error downloading {media_type}s: {e}")
         console.print(f"[red]Error downloading {media_type}s: {e}[/red]")
+
+    finally:
+        if client.is_connected():
+            await client.disconnect()
 
 def display_main_menu():
     console.clear()
@@ -399,7 +416,11 @@ def display_main_menu():
 
 async def get_channel_info(channel_input):
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         channel = await client.get_entity(channel_input)
         video_count = 0
         image_count = 0
@@ -424,7 +445,11 @@ async def get_channel_info(channel_input):
 
 async def get_timeline_overview(channel_input, start_date=None, end_date=None):
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         channel = await client.get_entity(channel_input)
         timeline = {}
         async for message in client.iter_messages(channel):
@@ -450,7 +475,11 @@ async def get_timeline_overview(channel_input, start_date=None, end_date=None):
 
 async def get_detailed_timeline(channel_input, start_date=None, end_date=None):
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         channel = await client.get_entity(channel_input)
         detailed_timeline = []
         async for message in client.iter_messages(channel):
@@ -506,7 +535,11 @@ async def get_detailed_timeline(channel_input, start_date=None, end_date=None):
 
 async def download_by_name(channel_input, file_name):
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         downloaded_files = get_downloaded_files()
         semaphore = asyncio.Semaphore(10)
         matching_messages = []
@@ -706,7 +739,11 @@ def display_download_menu():
 
 async def search_by_size(channel_input, size_gb, search_type, tolerance=0.05, size_range=None):
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         size_bytes = size_gb * 1024 * 1024 * 1024
         tolerance_bytes = tolerance * 1024 * 1024 * 1024
         matching_messages = []
@@ -816,7 +853,11 @@ def display_size_search_menu():
 
 async def list_all_chats_with_member_count():
     try:
-        await client.start(phone=phone_number)
+        if not client.is_connected():
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.start(phone=phone_number)
+
         dialogs = await client.get_dialogs()
         table = Table(title="All Chats/Channels/Groups")
         table.add_column("Chat Name", justify="left")
@@ -856,7 +897,11 @@ async def list_all_chats_with_member_count():
         console.print(f"[red]Error: {e}[/red]")
 
 async def download_by_chat_id(chat_id, media_type, start_date=None, end_date=None):
-    await client.start(phone=phone_number)
+    if not client.is_connected():
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.start(phone=phone_number)
+
     downloaded_files = get_downloaded_files()
     semaphore = asyncio.Semaphore(20)
     success_count = 0
@@ -1075,6 +1120,9 @@ async def main():
             break
         else:
             console.print("[red]Invalid choice, please try again.[/red]")
+
+    if client.is_connected():
+            await client.disconnect()
 
 if __name__ == "__main__":
     asyncio.run(main())
