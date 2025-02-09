@@ -1120,7 +1120,6 @@ async def main():
             break
         else:
             console.print("[red]Invalid choice, please try again.[/red]")
-
     if client.is_connected():
             await client.disconnect()
 
